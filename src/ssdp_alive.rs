@@ -1,10 +1,10 @@
 use std::net::UdpSocket;
 use serde::Deserialize;
 use reqwest::{
-    blocking::Response,
     header::SERVER
 };
 
+use log::{info, trace, warn, debug};
 
 #[derive(Debug, Deserialize)]
 struct DLNADevice {
@@ -69,7 +69,8 @@ NTS:ssdp:alive\r\n\
 \r\n",
     cache_max_age=130, location=endpoint_desc_url, server_ua=user_agent.unwrap(), device_type=endpoint_info.device_type, udn=endpoint_info.unique_device_name);
 
-    ssdp_socket.send_to(ssdp_alive.as_bytes(), "239.255.255.250:1900");
+    ssdp_socket.send_to(ssdp_alive.as_bytes(), "239.255.255.250:1900").
+        map_err(|_| "Failed to send on UDP socket")?;
 
-    Ok(println!("{}", ssdp_alive))
+    Ok(debug!(target: "dlnaproxy", "Sent ssdp:alive packet !"))
 }

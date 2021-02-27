@@ -1,15 +1,27 @@
 [package]
 name = "dlnaproxy"
 version = "0.1.0"
-authors = ["Nic0w <nico.broquet@gmail.com>"]
+authors = ["Nic0w"]
 edition = "2018"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[profile.release]
+lto = true
 
 [dependencies]
+syslog = "4"
 httparse = ""
 timer = ""
 chrono = ""
+clap = ""
+
+[dependencies.log]
+version = ""
+features = ["std"]
+
+[dependencies.fern]
+version = ""
+features = ["syslog-4"]
 
 [dependencies.reqwest]
 version = ""
@@ -17,8 +29,8 @@ features = ["blocking", "gzip"]
 
 [dependencies.serde]
 version = ""
-features = [ "derive" ]
+features = ["derive"]
 
 [dependencies.quick-xml]
 version = ""
-features = [ "serialize" ]
+features = ["serialize"]
