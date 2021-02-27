@@ -1,55 +1,53 @@
-use std::net::{ UdpSocket, Ipv4Addr };
+
+use crate::ssdp_broadcast;
+
+use std::net::{ UdpSocket };
 use std::collections::HashMap;
 
 use httparse::{Request, EMPTY_HEADER};
+
+use log::{info, trace, warn, debug};
 
 /*
     SSDP RFC for reference: https://tools.ietf.org/html/draft-cai-ssdp-v1-03
 */
 
-pub fn ssdp_loop() {
-
-    let multicast_addr = Ipv4Addr::new(239, 255, 255, 250);
-    let port: u16 = 1900;
-
-    let bind_addr = format!("{addr}:{port}", addr=multicast_addr, port=port);
-
-    let ssdp = UdpSocket::bind(bind_addr).
-        expect("Failed to bind socket.");
-
-    ssdp.join_multicast_v4(&multicast_addr, &Ipv4Addr::UNSPECIFIED).
-        expect("Failed to join multicast group");
+pub fn do_listen(ssdp: UdpSocket, url: &str) {
 
     loop {
-
         let mut buffer: [u8; 1024] = [0; 1024];
 
-        let (_bytes_read, src_addr) = ssdp.recv_from(&mut buffer).
+        let (bytes_read, src_addr) = ssdp.recv_from(&mut buffer).
             expect("failed to read!");
+
+        trace!(target: "dlnaproxy", "Read {amount} bytes sent by {sender}.", amount=bytes_read, sender=src_addr);
 
         let (ssdp_method, ssdp_headers) = match parse_ssdp(&buffer) {
             Ok(parsed_data) => parsed_data,
             Err(e) => {
-                println!("Error: {}", e);
+                warn!(target:"dlnaproxy", "{}", e);
                 continue;
             }
         };
 
         let st_header = ssdp_headers.get("ST");
-        let man_header = ssdp_headers.get("MAN");
+        let _man_header = ssdp_headers.get("MAN");
 
         let src_addr = src_addr.to_string();
-
-        let def_string = String::from("nothing");
-
-        println!("{}:{} from {}, looking for {}", ssdp_method, man_header.or(Some(&def_string)).unwrap(), src_addr, st_header.or(Some(&def_string)).unwrap());
 
         //We have a valid ssdp:discover request, although the rfc is soooooo vague it hurts.
         if ssdp_method == "M-SEARCH" && st_header.is_some() {
             if st_header.unwrap() == "urn:schemas-upnp-org:device:MediaServer:1" {
+                info!(target: "dlnaproxy", "Responding to a M-SEARCH request for a MediaServer from {sender}.", sender=src_addr);
 
-                println!("{from} is searching for a MediaServer ! ", from=src_addr);
-
+                if let Ok(cloned_socket) = ssdp.try_clone() {
+                    if let Err(msg) = ssdp_broadcast::do_ssdp_alive(cloned_socket, url) {
+                        warn!(target: "dlnaproxy", "Failed to broadcast while trying to respond to a M-SEARCH request: {}", msg);
+                    }
+                }
+                else {
+                    warn!(target: "dlnaproxy", "Failed to clone socket for broadcast while trying to respond to a M-SEARCH request.");
+                }
             }
         }
     }
@@ -61,10 +59,10 @@ fn parse_ssdp(buffer: &[u8]) -> Result<(String, HashMap<String, String>), &'stat
     let mut req = Request::new(&mut headers);
 
     req.parse(buffer).
-        map_err(|_| "failed to parse packet as SSDP.")?;
+        map_err(|_| "Failed to parse packet as SSDP.")?;
 
     let method = req.method.map(|s| String::from(s))
-        .ok_or_else(|| "No method found.")?;
+        .ok_or_else(|| "No method SSDP found.")?;
 
     let mut header_map: HashMap<String, String> = HashMap::with_capacity(headers.len());
     let mut i = 0;

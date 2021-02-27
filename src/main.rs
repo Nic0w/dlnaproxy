@@ -9,10 +9,12 @@ extern crate syslog;
 extern crate fern;
 extern crate log;
 
-mod ssdp_alive;
+mod ssdp_broadcast;
+mod ssdp_listener;
 
 use std::{
     process,
+    thread,
     sync::Arc,
     net::{
         UdpSocket,
@@ -25,6 +27,12 @@ use syslog::Facility;
 
 use chrono::Utc;
 use clap::{Arg, App, AppSettings};
+
+struct ThreadConfig {
+    description_url: String,
+    ssdp_socket: UdpSocket,
+    alive_interval: i64
+}
 
 fn main() {
 
@@ -51,7 +59,7 @@ fn main() {
         get_matches();
 
     let url = args.value_of("description-url").
-        expect("Missing description URL");
+        expect("Missing description URL").to_string();
 
     let interval: i64 = args.value_of("interval").unwrap_or("300").parse().
             expect("Bad value for interval");
@@ -69,21 +77,36 @@ fn main() {
     ssdp.join_multicast_v4(&multicast_addr, &Ipv4Addr::UNSPECIFIED).
         expect("Failed to join multicast group");
 
-    run(ssdp, url, interval);
+    let shared_config = Arc::new(ThreadConfig {
+        description_url: url,
+        ssdp_socket: ssdp,
+        alive_interval: interval
+    });
+
+    run_broadcast(shared_config.clone());
+    run_listener(shared_config.clone());
+
+    loop {}
 }
 
-fn run(ssdp: UdpSocket, url: &str, interval: i64) {
+fn run_listener(config: Arc<ThreadConfig>) {
+    thread::spawn(move || {
+        if let Ok(socket) = config.ssdp_socket.try_clone() {
+            ssdp_listener::do_listen(socket, config.description_url.as_ref());
+        }
+    });
+}
+
+fn run_broadcast(config: Arc<ThreadConfig>) {
     let alive_timer = timer::Timer::new();
 
     let now = Utc::now();
-    let loop_dur = chrono::Duration::seconds(interval);
-
-    let safe_url = Arc::new(url.to_owned());
+    let loop_dur = chrono::Duration::seconds(config.alive_interval);
 
     let _guard = alive_timer.schedule(now, Some(loop_dur), move || {
-        if let Ok(socket) = ssdp.try_clone() {
+        if let Ok(socket) = config.ssdp_socket.try_clone() {
 
-            if let Err(msg) = ssdp_alive::do_ssdp_alive(socket, safe_url.as_ref()) {
+            if let Err(msg) = ssdp_broadcast::do_ssdp_alive(socket, config.description_url.as_ref()) {
                 eprintln!("Fail: {}", msg);
             }
         }
@@ -91,7 +114,6 @@ fn run(ssdp: UdpSocket, url: &str, interval: i64) {
             eprintln!("Failed to clone socket.");
         }
     });
-    loop {}
 }
 
 fn init_logging() {
