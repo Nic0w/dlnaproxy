@@ -24,8 +24,9 @@ version = ""
 features = ["syslog-4"]
 
 [dependencies.reqwest]
+default-features = false
 version = ""
-features = ["blocking", "gzip"]
+features = ["blocking"]
 
 [dependencies.serde]
 version = ""
