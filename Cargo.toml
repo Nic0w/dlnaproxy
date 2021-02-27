@@ -9,19 +9,16 @@ edition = "2018"
 lto = true
 
 [dependencies]
-syslog = "4"
 httparse = ""
 timer = ""
 chrono = ""
 clap = ""
+nix = ""
+fern = ""
 
 [dependencies.log]
 version = ""
 features = ["std"]
-
-[dependencies.fern]
-version = ""
-features = ["syslog-4"]
 
 [dependencies.reqwest]
 default-features = false

@@ -52,6 +52,8 @@ fn fetch_endpoint_info(url: &str) -> Result<EndpointInfo> {
 
 pub fn do_ssdp_alive(ssdp_socket: UdpSocket, endpoint_desc_url: &str) -> Result<()> {
 
+    trace!(target: "dlnaproxy", "Fetching remote server's info.");
+
     let endpoint_info = fetch_endpoint_info(endpoint_desc_url)?;
 
     let default_ua = "DLNAProxy/1.0".to_string();
@@ -68,6 +70,8 @@ USN:{udn}::{device_type}\r\n\
 NTS:ssdp:alive\r\n\
 \r\n",
     cache_max_age=130, location=endpoint_desc_url, server_ua=user_agent.unwrap(), device_type=endpoint_info.device_type, udn=endpoint_info.unique_device_name);
+
+    trace!(target: "dlnaproxy", "Done crafting packet, sending !");
 
     ssdp_socket.send_to(ssdp_alive.as_bytes(), "239.255.255.250:1900").
         map_err(|_| "Failed to send on UDP socket")?;

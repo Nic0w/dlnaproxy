@@ -5,9 +5,9 @@ extern crate quick_xml;
 extern crate timer;
 extern crate chrono;
 extern crate clap;
-extern crate syslog;
 extern crate fern;
 extern crate log;
+extern crate nix;
 
 mod ssdp_broadcast;
 mod ssdp_listener;
@@ -15,18 +15,25 @@ mod ssdp_listener;
 use std::{
     process,
     thread,
+    time,
+    mem,
     sync::Arc,
+    os::unix::io::AsRawFd,
     net::{
         UdpSocket,
         Ipv4Addr
     }
 };
+
+use clap::{Arg, App, AppSettings};
+
 use log::{info, trace, warn, debug};
 
-use syslog::Facility;
+use nix::sys::socket::{self, sockopt::ReuseAddr};
+
+use timer::Guard;
 
 use chrono::Utc;
-use clap::{Arg, App, AppSettings};
 
 struct ThreadConfig {
     description_url: String,
@@ -74,6 +81,9 @@ fn main() {
     let ssdp = UdpSocket::bind(&bind_addr).
         expect("Failed to bind socket");
 
+    socket::setsockopt(ssdp.as_raw_fd(), ReuseAddr, &true).
+        expect("Failed to set SO_REUSEADDR.");
+
     ssdp.join_multicast_v4(&multicast_addr, &Ipv4Addr::UNSPECIFIED).
         expect("Failed to join multicast group");
 
@@ -83,10 +93,9 @@ fn main() {
         alive_interval: interval
     });
 
-    run_broadcast(shared_config.clone());
     run_listener(shared_config.clone());
-
-    loop {}
+    //for some reason this must be the last function called and we mustn't return from it else the scheduler does not execute...
+    run_broadcast(shared_config.clone());
 }
 
 fn run_listener(config: Arc<ThreadConfig>) {
@@ -103,30 +112,30 @@ fn run_broadcast(config: Arc<ThreadConfig>) {
     let now = Utc::now();
     let loop_dur = chrono::Duration::seconds(config.alive_interval);
 
-    let _guard = alive_timer.schedule(now, Some(loop_dur), move || {
+    trace!(target: "dlnaproxy", "About to schedule broadcast every {}s", config.alive_interval);
+
+    let guard = alive_timer.schedule(now, Some(loop_dur), move || {
+        trace!(target: "dlnaproxy", "About to attempt to broadcast.");
         if let Ok(socket) = config.ssdp_socket.try_clone() {
 
             if let Err(msg) = ssdp_broadcast::do_ssdp_alive(socket, config.description_url.as_ref()) {
-                eprintln!("Fail: {}", msg);
+                warn!(target: "dlnaproxy", "Couldn't send ssdp:alive: {}", msg);
             }
         }
         else {
-            eprintln!("Failed to clone socket.");
+            warn!(target: "dlnaproxy", "Broadcast: failed to clone socket.");
         }
     });
+
+    mem::forget(guard);
+
+    //never return!!
+    loop {
+        thread::sleep(time::Duration::from_millis(100));
+    }
 }
 
 fn init_logging() {
-
-    /*let formatter = syslog::Formatter3164 {
-            facility: Facility::LOG_USER,
-            hostname: None,
-            process: "dlnaproxy".into(),
-            pid: process::id() as i32
-    };
-
-    let syslog_binding = syslog::unix(formatter).
-        expect("Failed to connect to syslog.");*/
 
     fern::Dispatch::new().
         format(|out, message, record| {
