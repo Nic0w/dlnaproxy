@@ -1,8 +1,17 @@
 extern crate httparse;
+extern crate reqwest;
+extern crate serde;
+extern crate quick_xml;
+extern crate timer;
+extern crate chrono;
+
+mod ssdp;
+mod ssdp_alive;
 
 use std::net::{ UdpSocket, Ipv4Addr };
+use std::thread;
 
-use httparse::{Request, EMPTY_HEADER};
+use chrono::{ DateTime, Utc};
 
 fn main() {
     println!("Hello, world!");
@@ -10,39 +19,33 @@ fn main() {
     let multicast_addr = Ipv4Addr::new(239, 255, 255, 250);
     let port: u16 = 1900;
 
-    let bind_addr = format!("{addr}:{port}", addr=Ipv4Addr::UNSPECIFIED, port=port);
+    let bind_addr = format!("{addr}:{port}", addr=multicast_addr, port=port);
 
-    let ssdp = UdpSocket::bind(bind_addr).
+    let ssdp = UdpSocket::bind(&bind_addr).
         expect("Failed to bind socket.");
 
     ssdp.join_multicast_v4(&multicast_addr, &Ipv4Addr::UNSPECIFIED).
         expect("Failed to join multicast group");
 
-    let mut buffer: [u8; 1024] = [0; 1024];
+    let url = "http://10.0.42.1:8200/rootDesc.xml";
 
-    let (read, src) = ssdp.recv_from(&mut buffer).expect("failed to read!");
+    let alive_timer = timer::Timer::new();
 
-    println!("Read {} bytes from {}.", read, src);
 
-    let data = String::from_utf8_lossy(&buffer);
+    let now = Utc::now();
+    let loop_dur = chrono::Duration::seconds(10);
 
-    println!("{}", data);
+    let _guard = alive_timer.schedule(now, Some(loop_dur), move || {
+        if let Ok(socket) = ssdp.try_clone() {
 
-    let mut headers = [EMPTY_HEADER; 10];
-    let mut req = Request::new(&mut headers);
-
-    req.parse(&buffer).expect("Parsing failed.");
-
-    println!("Received {method} message !", method=req.method.unwrap());
-
-    for i in 0..headers.len() {
-
-        let header = headers[i];
-
-        if header.name != "" {
-
-            println!("{name}: {value}", name=header.name, value=String::from_utf8_lossy(header.value));
+            if let Err(msg) = ssdp_alive::do_ssdp_alive(socket, url) {
+                eprintln!("Fail: {}", msg);
+            }
         }
-    }
+        else {
+            eprintln!("Failed to clone socket.");
+        }
+    });
 
+    thread::sleep(std::time::Duration::from_millis(60*1000));
 }

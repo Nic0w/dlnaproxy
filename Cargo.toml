@@ -8,3 +8,17 @@ edition = "2018"
 
 [dependencies]
 httparse = ""
+timer = ""
+chrono = ""
+
+[dependencies.reqwest]
+version = ""
+features = ["blocking", "gzip"]
+
+[dependencies.serde]
+version = ""
+features = [ "derive" ]
+
+[dependencies.quick-xml]
+version = ""
+features = [ "serialize" ]
