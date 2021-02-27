@@ -71,6 +71,7 @@ NTS:ssdp:alive\r\n\
 \r\n",
     cache_max_age=130, location=endpoint_desc_url, server_ua=user_agent.unwrap(), device_type=endpoint_info.device_type, udn=endpoint_info.unique_device_name);
 
+    trace!(target: "dlnaproxy", "{}", ssdp_alive);
     trace!(target: "dlnaproxy", "Done crafting packet, sending !");
 
     ssdp_socket.send_to(ssdp_alive.as_bytes(), "239.255.255.250:1900").

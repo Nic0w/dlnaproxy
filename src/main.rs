@@ -43,8 +43,6 @@ struct ThreadConfig {
 
 fn main() {
 
-    init_logging();
-
     let args = App::new("DLNAProxy")
         .setting(AppSettings::ArgRequiredElseHelp)
         .version("1.0")
@@ -62,8 +60,16 @@ fn main() {
             .long("interval")
             .value_name("DURATION")
             .help("Interval at which we will check the remote server's presence and broadcast on its behalf, in seconds.")
-            .takes_value(true)).
-        get_matches();
+            .takes_value(true))
+        .arg(Arg::with_name("verbose")
+            .short("v")
+            .long("verbose")
+            .takes_value(false)
+            .multiple(true)
+            .help("Verbosity level. The more v, the more verbose."))
+        .get_matches();
+
+    let verbosity = init_logging(args.occurrences_of("verbose"));
 
     let url = args.value_of("description-url").
         expect("Missing description URL").to_string();
@@ -71,7 +77,7 @@ fn main() {
     let interval: i64 = args.value_of("interval").unwrap_or("300").parse().
             expect("Bad value for interval");
 
-    info!(target: "dlnaproxy", "Started with URL {} and interval: {}s", url, interval);
+    debug!(target: "dlnaproxy", "Desc URL: '{}', interval: {}s, verbosity: {}", url, interval, verbosity);
 
     let multicast_addr = Ipv4Addr::new(239, 255, 255, 250);
     let port: u16 = 1900;
@@ -112,7 +118,7 @@ fn run_broadcast(config: Arc<ThreadConfig>) {
     let now = Utc::now();
     let loop_dur = chrono::Duration::seconds(config.alive_interval);
 
-    trace!(target: "dlnaproxy", "About to schedule broadcast every {}s", config.alive_interval);
+    debug!(target: "dlnaproxy", "About to schedule broadcast every {}s", config.alive_interval);
 
     let guard = alive_timer.schedule(now, Some(loop_dur), move || {
         trace!(target: "dlnaproxy", "About to attempt to broadcast.");
@@ -120,6 +126,9 @@ fn run_broadcast(config: Arc<ThreadConfig>) {
 
             if let Err(msg) = ssdp_broadcast::do_ssdp_alive(socket, config.description_url.as_ref()) {
                 warn!(target: "dlnaproxy", "Couldn't send ssdp:alive: {}", msg);
+            }
+            else {
+                info!(target: "dlnaproxy", "Broadcasted on local SSDP channel!");
             }
         }
         else {
@@ -135,7 +144,14 @@ fn run_broadcast(config: Arc<ThreadConfig>) {
     }
 }
 
-fn init_logging() {
+fn init_logging(verbosity: u64) -> log::LevelFilter {
+
+    let level: log::LevelFilter = match verbosity {
+        0 => log::LevelFilter::Warn,
+        1 => log::LevelFilter::Info,
+        2 => log::LevelFilter::Debug,
+        3..=u64::MAX => log::LevelFilter::Trace
+    };
 
     fern::Dispatch::new().
         format(|out, message, record| {
@@ -150,8 +166,9 @@ fn init_logging() {
         // by default only accept warning messages from libraries so we don't spam
         level(log::LevelFilter::Warn).
         // but accept Info and Debug and Trace for our app.
-        level_for("dlnaproxy", log::LevelFilter::Trace).
+        level_for("dlnaproxy", level).
         chain(std::io::stdout()).
         apply().
             expect("Failed to configure logging.");
+    level
 }
