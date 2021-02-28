@@ -100,8 +100,12 @@ fn main() {
     });
 
     run_listener(shared_config.clone());
-    //for some reason this must be the last function called and we mustn't return from it else the scheduler does not execute...
     run_broadcast(shared_config.clone());
+
+    //never return!!
+    loop {
+        thread::sleep(time::Duration::from_millis(100));
+    }
 }
 
 fn run_listener(config: Arc<ThreadConfig>) {
@@ -137,11 +141,7 @@ fn run_broadcast(config: Arc<ThreadConfig>) {
     });
 
     mem::forget(guard);
-
-    //never return!!
-    loop {
-        thread::sleep(time::Duration::from_millis(100));
-    }
+    mem::forget(alive_timer);
 }
 
 fn init_logging(verbosity: u64) -> log::LevelFilter {

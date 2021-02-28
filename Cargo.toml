@@ -10,7 +10,7 @@ lto = true
 
 [dependencies]
 httparse = ""
-timer = ""
+timer = { git = "https://github.com/Yoric/timer.rs", branch = "master" }
 chrono = ""
 clap = ""
 nix = ""
