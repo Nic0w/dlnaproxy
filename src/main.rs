@@ -13,7 +13,6 @@ mod ssdp_broadcast;
 mod ssdp_listener;
 
 use std::{
-    process,
     thread,
     time,
     mem,
@@ -31,14 +30,13 @@ use log::{info, trace, warn, debug};
 
 use nix::sys::socket::{self, sockopt::ReuseAddr};
 
-use timer::Guard;
-
 use chrono::Utc;
 
-struct ThreadConfig {
-    description_url: String,
-    ssdp_socket: UdpSocket,
-    alive_interval: i64
+pub struct ThreadConfig {
+    pub description_url: String,
+    pub ssdp_socket: UdpSocket,
+    pub alive_interval: i64,
+    pub http_client: reqwest::blocking::Client
 }
 
 fn main() {
@@ -93,10 +91,16 @@ fn main() {
     ssdp.join_multicast_v4(&multicast_addr, &Ipv4Addr::UNSPECIFIED).
         expect("Failed to join multicast group");
 
+    let timeout = time::Duration::from_secs(5);
+    let http_client = reqwest::blocking::ClientBuilder::new()
+        .timeout(timeout).build()
+        .expect("Failed to create HTTP client.");
+
     let shared_config = Arc::new(ThreadConfig {
         description_url: url,
         ssdp_socket: ssdp,
-        alive_interval: interval
+        alive_interval: interval,
+        http_client: http_client
     });
 
     run_listener(shared_config.clone());
@@ -110,9 +114,7 @@ fn main() {
 
 fn run_listener(config: Arc<ThreadConfig>) {
     thread::spawn(move || {
-        if let Ok(socket) = config.ssdp_socket.try_clone() {
-            ssdp_listener::do_listen(socket, config.description_url.as_ref());
-        }
+        ssdp_listener::do_listen(config);
     });
 }
 
@@ -128,7 +130,7 @@ fn run_broadcast(config: Arc<ThreadConfig>) {
         trace!(target: "dlnaproxy", "About to attempt to broadcast.");
         if let Ok(socket) = config.ssdp_socket.try_clone() {
 
-            if let Err(msg) = ssdp_broadcast::do_ssdp_alive(socket, config.description_url.as_ref()) {
+            if let Err(msg) = ssdp_broadcast::do_ssdp_alive(&config.http_client, socket, config.description_url.as_ref()) {
                 warn!(target: "dlnaproxy", "Couldn't send ssdp:alive: {}", msg);
             }
             else {

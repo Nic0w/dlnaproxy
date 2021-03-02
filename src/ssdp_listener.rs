@@ -1,5 +1,8 @@
 
+use crate::ThreadConfig;
 use crate::ssdp_broadcast;
+
+use std::sync::Arc;
 
 use std::net::{ UdpSocket };
 use std::collections::HashMap;
@@ -12,7 +15,12 @@ use log::{info, trace, warn, debug};
     SSDP RFC for reference: https://tools.ietf.org/html/draft-cai-ssdp-v1-03
 */
 
-pub fn do_listen(ssdp: UdpSocket, url: &str) {
+pub fn do_listen(config: Arc<ThreadConfig>) {
+
+    let ssdp = config.ssdp_socket.try_clone().
+        expect("Failed to clone socket.");
+
+    let http_client = config.http_client.clone();
 
     loop {
         let mut buffer: [u8; 1024] = [0; 1024];
@@ -41,7 +49,7 @@ pub fn do_listen(ssdp: UdpSocket, url: &str) {
                 info!(target: "dlnaproxy", "Responding to a M-SEARCH request for a MediaServer from {sender}.", sender=src_addr);
 
                 if let Ok(cloned_socket) = ssdp.try_clone() {
-                    if let Err(msg) = ssdp_broadcast::do_ssdp_alive(cloned_socket, url) {
+                    if let Err(msg) = ssdp_broadcast::do_ssdp_alive(&http_client, cloned_socket, &config.description_url) {
                         warn!(target: "dlnaproxy", "Failed to broadcast while trying to respond to a M-SEARCH request: {}", msg);
                     }
                 }

@@ -1,7 +1,8 @@
 use std::net::UdpSocket;
 use serde::Deserialize;
 use reqwest::{
-    header::SERVER
+    header::SERVER,
+    blocking::Client
 };
 
 use log::{info, trace, warn, debug};
@@ -28,9 +29,9 @@ struct EndpointInfo {
 
 type Result<T> =  std::result::Result<T, &'static str>;
 
-fn fetch_endpoint_info(url: &str) -> Result<EndpointInfo> {
+fn fetch_endpoint_info(http: &Client, url: &str) -> Result<EndpointInfo> {
 
-    let endpoint_response = reqwest::blocking::get(url).
+    let endpoint_response = http.get(url).send().
         map_err(|_| "Failed to get description of remote endpoint.")?;
 
     let server_ua = endpoint_response.headers().get(SERVER).
@@ -50,11 +51,11 @@ fn fetch_endpoint_info(url: &str) -> Result<EndpointInfo> {
 }
 
 
-pub fn do_ssdp_alive(ssdp_socket: UdpSocket, endpoint_desc_url: &str) -> Result<()> {
+pub fn do_ssdp_alive(http_client: &Client, ssdp_socket: UdpSocket, endpoint_desc_url: &str) -> Result<()> {
 
     trace!(target: "dlnaproxy", "Fetching remote server's info.");
 
-    let endpoint_info = fetch_endpoint_info(endpoint_desc_url)?;
+    let endpoint_info = fetch_endpoint_info(http_client, endpoint_desc_url)?;
 
     let default_ua = "DLNAProxy/1.0".to_string();
     let user_agent = endpoint_info.server.or(Some(default_ua));
