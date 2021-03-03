@@ -60,7 +60,7 @@ pub fn do_ssdp_alive(http_client: &Client, ssdp_socket: UdpSocket, endpoint_desc
     let default_ua = "DLNAProxy/1.0".to_string();
     let user_agent = endpoint_info.server.or(Some(default_ua));
 
-    let ssdp_alive = format!("
+    let ssdp_alive = format!("\
 NOTIFY * HTTP/1.1\r\n\
 HOST:239.255.255.250:1900\r\n\
 CACHE-CONTROL:max-age={cache_max_age}\r\n\
