@@ -1,5 +1,8 @@
 use std:: {
-    thread,
+    thread::{
+        self,
+        JoinHandle
+    },
     sync::Arc,
     time::Duration,
     os::unix::io::AsRawFd,
@@ -23,7 +26,6 @@ static SSDP_ADDRESS: (Ipv4Addr, u16) = (Ipv4Addr::new(239, 255, 255, 250), 1900)
 pub struct SSDPManager {
     broadcast_period: Duration,
     broadcaster: Arc<SSDPBroadcast>,
-    timer: Option<(timer::Timer, timer::Guard)>,
 
     listener: Arc<SSDPListener>,
 }
@@ -51,14 +53,12 @@ impl SSDPManager {
 
         SSDPManager {
             broadcast_period: broadcast_period,
-            timer: None,
-
             broadcaster: ssdp_broadcast,
             listener: ssdp_listener
         }
     }
 
-    pub fn start_broadcast(&mut self) {
+    pub fn start_broadcast(&self) -> (timer::Timer, timer::Guard) {
         let broadcast = self.broadcaster.clone();
 
         let alive_timer = timer::Timer::new();
@@ -78,14 +78,15 @@ impl SSDPManager {
             }
         });
 
-        self.timer = Some((alive_timer, guard));
+        (alive_timer, guard)
     }
 
-    pub fn start_listener(&self) {
+    pub fn start_listener(&self) -> JoinHandle<()> {
         let listener = self.listener.clone();
+
         thread::spawn(move || {
             listener.do_listen();
-        });
+        })
     }
 
 }

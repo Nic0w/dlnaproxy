@@ -65,15 +65,12 @@ fn main() {
 
     let timeout = time::Duration::from_secs(2);
 
-    let mut ssdp = SSDPManager::new(&url, period, Some(timeout));
+    let ssdp = SSDPManager::new(&url, period, Some(timeout));
 
-    ssdp.start_broadcast();
-    ssdp.start_listener();
+    let (timer, guard) = ssdp.start_broadcast();
 
-    //never return!!
-    loop {
-        thread::sleep(time::Duration::from_millis(100));
-    }
+    ssdp.start_listener().join().
+        expect("Panicked !");
 }
 
 fn init_logging(verbosity: u64) -> log::LevelFilter {
