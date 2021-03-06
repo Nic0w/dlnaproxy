@@ -12,6 +12,7 @@ extern crate nix;
 mod ssdp_broadcast;
 mod ssdp_listener;
 mod ssdp;
+mod tcp_proxy;
 
 use std::{
     thread,
