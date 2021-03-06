@@ -1,60 +1,67 @@
+use log::{info, trace, warn, debug};
 
-use crate::ThreadConfig;
-use crate::ssdp_broadcast;
-
-use std::sync::Arc;
-
-use std::net::{ UdpSocket };
-use std::collections::HashMap;
+use std::{
+    sync::Arc,
+    net::UdpSocket,
+    collections::HashMap
+};
 
 use httparse::{Request, EMPTY_HEADER};
 
-use log::{info, trace, warn, debug};
+use crate::ssdp_broadcast::SSDPBroadcast;
 
 /*
     SSDP RFC for reference: https://tools.ietf.org/html/draft-cai-ssdp-v1-03
 */
 
-pub fn do_listen(config: Arc<ThreadConfig>) {
+pub struct SSDPListener {
+    ssdp_socket: UdpSocket,
+    broadcaster: Arc<SSDPBroadcast>
+}
 
-    let ssdp = config.ssdp_socket.try_clone().
-        expect("Failed to clone socket.");
+impl SSDPListener {
 
-    let http_client = config.http_client.clone();
+    pub fn new(ssdp_socket: UdpSocket, broadcaster: Arc<SSDPBroadcast>) -> Self {
+        SSDPListener {
+            ssdp_socket: ssdp_socket,
+            broadcaster: broadcaster
+        }
+    }
 
-    loop {
-        let mut buffer: [u8; 1024] = [0; 1024];
+    pub fn do_listen(&self) {
 
-        let (bytes_read, src_addr) = ssdp.recv_from(&mut buffer).
-            expect("failed to read!");
+        loop {
+            let mut buffer: [u8; 1024] = [0; 1024];
 
-        trace!(target: "dlnaproxy", "Read {amount} bytes sent by {sender}.", amount=bytes_read, sender=src_addr);
+            let (bytes_read, src_addr) = self.ssdp_socket.recv_from(&mut buffer).
+                expect("failed to read!");
 
-        let (ssdp_method, ssdp_headers) = match parse_ssdp(&buffer) {
-            Ok(parsed_data) => parsed_data,
-            Err(e) => {
-                warn!(target:"dlnaproxy", "{}", e);
-                continue;
-            }
-        };
+            trace!(target: "dlnaproxy", "Read {amount} bytes sent by {sender}.", amount=bytes_read, sender=src_addr);
 
-        let st_header = ssdp_headers.get("ST");
-        let _man_header = ssdp_headers.get("MAN");
-
-        let src_addr = src_addr.to_string();
-
-        //We have a valid ssdp:discover request, although the rfc is soooooo vague it hurts.
-        if ssdp_method == "M-SEARCH" && st_header.is_some() {
-            if st_header.unwrap() == "urn:schemas-upnp-org:device:MediaServer:1" {
-                info!(target: "dlnaproxy", "Responding to a M-SEARCH request for a MediaServer from {sender}.", sender=src_addr);
-
-                if let Ok(cloned_socket) = ssdp.try_clone() {
-                    if let Err(msg) = ssdp_broadcast::do_ssdp_alive(&http_client, cloned_socket, &config.description_url) {
-                        warn!(target: "dlnaproxy", "Failed to broadcast while trying to respond to a M-SEARCH request: {}", msg);
-                    }
+            let (ssdp_method, ssdp_headers) = match parse_ssdp(&buffer) {
+                Ok(parsed_data) => parsed_data,
+                Err(e) => {
+                    warn!(target:"dlnaproxy", "{}", e);
+                    continue;
                 }
-                else {
-                    warn!(target: "dlnaproxy", "Failed to clone socket for broadcast while trying to respond to a M-SEARCH request.");
+            };
+
+            let st_header = ssdp_headers.get("ST");
+            let _man_header = ssdp_headers.get("MAN");
+
+            let src_addr = src_addr.to_string();
+
+            //We have a valid ssdp:discover request, although the rfc is soooooo vague it hurts.
+            if ssdp_method == "M-SEARCH" && st_header.is_some() {
+                if st_header.unwrap() == "urn:schemas-upnp-org:device:MediaServer:1" {
+                    info!(target: "dlnaproxy", "Responding to a M-SEARCH request for a MediaServer from {sender}.", sender=src_addr);
+
+                    if let Err(msg) = self.broadcaster.do_ssdp_alive()  {
+                        warn!(target: "dlnaproxy", "Couldn't send ssdp:alive: {}", msg);
+                    }
+                    else {
+                        info!(target: "dlnaproxy", "Broadcasted on local SSDP channel!");
+                    }
                 }
             }
         }

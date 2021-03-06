@@ -11,33 +11,17 @@ extern crate nix;
 
 mod ssdp_broadcast;
 mod ssdp_listener;
+mod ssdp;
 
 use std::{
     thread,
     time,
-    mem,
-    sync::Arc,
-    os::unix::io::AsRawFd,
-    net::{
-        UdpSocket,
-        Ipv4Addr
-    }
 };
 
 use clap::{Arg, App, AppSettings};
-
 use log::{info, trace, warn, debug};
 
-use nix::sys::socket::{self, sockopt::ReuseAddr};
-
-use chrono::Utc;
-
-pub struct ThreadConfig {
-    pub description_url: String,
-    pub ssdp_socket: UdpSocket,
-    pub alive_interval: i64,
-    pub http_client: reqwest::blocking::Client
-}
+use crate::ssdp::SSDPManager;
 
 fn main() {
 
@@ -72,78 +56,24 @@ fn main() {
     let url = args.value_of("description-url").
         expect("Missing description URL").to_string();
 
-    let interval: i64 = args.value_of("interval").unwrap_or("300").parse().
+    let interval: u64 = args.value_of("interval").unwrap_or("300").parse().
             expect("Bad value for interval");
 
     debug!(target: "dlnaproxy", "Desc URL: '{}', interval: {}s, verbosity: {}", url, interval, verbosity);
 
-    let multicast_addr = Ipv4Addr::new(239, 255, 255, 250);
-    let port: u16 = 1900;
+    let period = time::Duration::from_secs(interval);
 
-    let bind_addr = format!("{addr}:{port}", addr=multicast_addr, port=port);
+    let timeout = time::Duration::from_secs(2);
 
-    let ssdp = UdpSocket::bind(&bind_addr).
-        expect("Failed to bind socket");
+    let mut ssdp = SSDPManager::new(&url, period, Some(timeout));
 
-    socket::setsockopt(ssdp.as_raw_fd(), ReuseAddr, &true).
-        expect("Failed to set SO_REUSEADDR.");
-
-    ssdp.join_multicast_v4(&multicast_addr, &Ipv4Addr::UNSPECIFIED).
-        expect("Failed to join multicast group");
-
-    let timeout = time::Duration::from_secs(5);
-    let http_client = reqwest::blocking::ClientBuilder::new()
-        .timeout(timeout).build()
-        .expect("Failed to create HTTP client.");
-
-    let shared_config = Arc::new(ThreadConfig {
-        description_url: url,
-        ssdp_socket: ssdp,
-        alive_interval: interval,
-        http_client: http_client
-    });
-
-    run_listener(shared_config.clone());
-    run_broadcast(shared_config.clone());
+    ssdp.start_broadcast();
+    ssdp.start_listener();
 
     //never return!!
     loop {
         thread::sleep(time::Duration::from_millis(100));
     }
-}
-
-fn run_listener(config: Arc<ThreadConfig>) {
-    thread::spawn(move || {
-        ssdp_listener::do_listen(config);
-    });
-}
-
-fn run_broadcast(config: Arc<ThreadConfig>) {
-    let alive_timer = timer::Timer::new();
-
-    let now = Utc::now();
-    let loop_dur = chrono::Duration::seconds(config.alive_interval);
-
-    debug!(target: "dlnaproxy", "About to schedule broadcast every {}s", config.alive_interval);
-
-    let guard = alive_timer.schedule(now, Some(loop_dur), move || {
-        trace!(target: "dlnaproxy", "About to attempt to broadcast.");
-        if let Ok(socket) = config.ssdp_socket.try_clone() {
-
-            if let Err(msg) = ssdp_broadcast::do_ssdp_alive(&config.http_client, socket, config.description_url.as_ref()) {
-                warn!(target: "dlnaproxy", "Couldn't send ssdp:alive: {}", msg);
-            }
-            else {
-                info!(target: "dlnaproxy", "Broadcasted on local SSDP channel!");
-            }
-        }
-        else {
-            warn!(target: "dlnaproxy", "Broadcast: failed to clone socket.");
-        }
-    });
-
-    mem::forget(guard);
-    mem::forget(alive_timer);
 }
 
 fn init_logging(verbosity: u64) -> log::LevelFilter {
