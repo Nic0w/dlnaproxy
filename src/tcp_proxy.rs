@@ -1,3 +1,4 @@
+use log::{info, trace, warn, debug};
 
 use std::{
     net::{
@@ -21,7 +22,7 @@ impl TCPProxy {
         let listener = TcpListener::bind(from).
             expect("Unable to bind proxy addr");
 
-        println!("Proxing TCP packets from {} to {}", from, to);
+        info!(target: "dlnaproxy", "Proxing TCP connections from {} to {}.", from, to);
 
         thread::spawn(self.listen_loop(listener, to))
     }
@@ -38,12 +39,15 @@ impl TCPProxy {
                     continue;
                 };
 
+                let peer_addr = proxied_stream.peer_addr().
+                    unwrap();
+
                 let conn_thread = TcpStream::connect(origin)
                 .map(|to_stream| thread::spawn(move || handle_conn(proxied_stream, to_stream)));
 
                 match conn_thread {
-                    Ok(_) => { println!("Successfully established a connection with client"); }
-                    Err(err) => { println!("Unable to establish a connection with client {}", err); }
+                    Ok(_) => { debug!(target: "dlnaproxy", "Successfully established a connection with client: {}", peer_addr); }
+                    Err(err) => { warn!(target: "dlnaproxy", "Unable to establish a connection with client: {}", err); }
                 }
             }
         }
@@ -52,6 +56,10 @@ impl TCPProxy {
 
 
 fn handle_conn(lhs_stream: TcpStream, rhs_stream: TcpStream) {
+
+    let peer_addr = lhs_stream.peer_addr()
+        .unwrap();
+
     let lhs_arc = Arc::new(lhs_stream);
     let rhs_arc = Arc::new(rhs_stream);
 
@@ -66,4 +74,6 @@ fn handle_conn(lhs_stream: TcpStream, rhs_stream: TcpStream) {
     for t in connections {
         t.join().unwrap();
     }
+
+    trace!(target: "dlnaproxy", "Closed connection with: {}", peer_addr);
 }
