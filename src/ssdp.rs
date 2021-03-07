@@ -19,44 +19,50 @@ use chrono::Utc;
 use nix::sys::socket::{self, sockopt::ReuseAddr};
 
 
-use crate::ssdp_broadcast::SSDPBroadcast;
+use crate::ssdp_utils::InteractiveSSDP;
 use crate::ssdp_listener::SSDPListener;
+use crate::ssdp_broadcast::SSDPBroadcast;
 
 static SSDP_ADDRESS: (Ipv4Addr, u16) = (Ipv4Addr::new(239, 255, 255, 250), 1900);
 
 pub struct SSDPManager {
     broadcast_period: Duration,
-    
-    broadcaster: Arc<SSDPBroadcast>,
     listener: Arc<SSDPListener>,
-
+    broadcaster: Arc<SSDPBroadcast>
 }
 
 impl SSDPManager {
 
     pub fn new(endpoint_desc_url: &str, broadcast_period: Duration, connect_timeout: Option<Duration>) -> Self {
 
-        let http_client = Arc::new(
-            blocking::Client::builder().
+        let http_client = blocking::Client::builder().
                 connect_timeout(connect_timeout).
                 build().
-                    expect("Failed to build HTTP client.")
-        );
+                    expect("Failed to build HTTP client.");
 
         let (ssdp1, ssdp2) = ssdp_socket_pair();
 
-        let ssdp_broadcast = Arc::new(
-            SSDPBroadcast::new(ssdp1, http_client.clone(), endpoint_desc_url)
+        let cache_max_age = match broadcast_period.as_secs() {
+            n if n < 20 => 20 as usize,
+            n => (n * 2) as usize
+        };
+
+        let interactive_ssdp = Arc::new(
+            InteractiveSSDP::new(http_client, endpoint_desc_url, cache_max_age)
         );
 
-        let ssdp_listener = Arc::new(
-            SSDPListener::new(ssdp2, http_client.clone(), endpoint_desc_url)
+        let listener = Arc::new(
+            SSDPListener::new(ssdp1, interactive_ssdp.clone())
+        );
+
+        let broadcaster = Arc::new(
+            SSDPBroadcast::new(ssdp2, interactive_ssdp.clone())
         );
 
         SSDPManager {
             broadcast_period: broadcast_period,
-            broadcaster: ssdp_broadcast,
-            listener: ssdp_listener,
+            listener: listener,
+            broadcaster: broadcaster
         }
     }
 
@@ -90,7 +96,6 @@ impl SSDPManager {
             listener.do_listen();
         })
     }
-
 }
 
 fn ssdp_socket_pair() -> (UdpSocket, UdpSocket) {

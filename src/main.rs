@@ -11,8 +11,8 @@ extern crate nix;
 
 mod ssdp_packet;
 mod ssdp_utils;
-mod ssdp_broadcast;
 mod ssdp_listener;
+mod ssdp_broadcast;
 mod ssdp;
 mod tcp_proxy;
 
