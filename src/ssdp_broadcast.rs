@@ -1,9 +1,8 @@
-use log::{info, trace, warn, debug};
-
 use std::net::UdpSocket;
 use std::sync::Arc;
 
 use crate::ssdp_utils::{ Result, InteractiveSSDP };
+use crate::ssdp::SSDP_ADDRESS;
 
 pub struct SSDPBroadcast {
     ssdp_socket: UdpSocket,
@@ -20,6 +19,6 @@ impl SSDPBroadcast {
     }
 
     pub fn do_ssdp_alive(&self) -> Result<()> {
-        self.ssdp_helper.send_alive(&self.ssdp_socket, "239.255.255.250:1900")
+        self.ssdp_helper.send_alive(&self.ssdp_socket, SSDP_ADDRESS)
     }
 }

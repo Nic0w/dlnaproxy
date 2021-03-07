@@ -13,7 +13,7 @@ use std:: {
 };
 use reqwest::blocking;
 
-use log::{info, trace, warn, debug};
+use log::{info, warn, debug};
 
 use chrono::Utc;
 use nix::sys::socket::{self, sockopt::ReuseAddr};
@@ -23,7 +23,7 @@ use crate::ssdp_utils::InteractiveSSDP;
 use crate::ssdp_listener::SSDPListener;
 use crate::ssdp_broadcast::SSDPBroadcast;
 
-static SSDP_ADDRESS: (Ipv4Addr, u16) = (Ipv4Addr::new(239, 255, 255, 250), 1900);
+pub static SSDP_ADDRESS: (Ipv4Addr, u16) = (Ipv4Addr::new(239, 255, 255, 250), 1900);
 
 pub struct SSDPManager {
     broadcast_period: Duration,
@@ -43,9 +43,9 @@ impl SSDPManager {
         let (ssdp1, ssdp2) = ssdp_socket_pair();
 
         let cache_max_age = match broadcast_period.as_secs() {
-            n if n < 20 => 20 as usize,
-            n => (n * 2) as usize
-        };
+            n if n < 20 => 20,
+            n => (n * 2)
+        } as usize;
 
         let interactive_ssdp = Arc::new(
             InteractiveSSDP::new(http_client, endpoint_desc_url, cache_max_age)
@@ -100,9 +100,7 @@ impl SSDPManager {
 
 fn ssdp_socket_pair() -> (UdpSocket, UdpSocket) {
 
-    let bind_addr = format!("{addr}:{port}", addr=SSDP_ADDRESS.0, port=SSDP_ADDRESS.1);
-
-    let ssdp1 = UdpSocket::bind(&bind_addr).
+    let ssdp1 = UdpSocket::bind(SSDP_ADDRESS).
         expect("Failed to bind socket");
 
     socket::setsockopt(ssdp1.as_raw_fd(), ReuseAddr, &true).

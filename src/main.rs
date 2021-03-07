@@ -28,7 +28,7 @@ use std::{
 use reqwest::Url;
 
 use clap::{Arg, App, AppSettings};
-use log::{info, trace, warn, debug};
+use log::{ trace, debug};
 
 
 use crate::ssdp::SSDPManager;
@@ -87,7 +87,7 @@ fn main() {
     let parsed_addr : Option<SocketAddr> = args.value_of("proxy").
         map(|addr| addr.parse().expect("Bad proxy address"));
 
-    let tcp_proxy_thread = if let Some(proxy_addr) = parsed_addr {
+    let _tcp_proxy_thread = if let Some(proxy_addr) = parsed_addr {
 
         let server_addr = sockaddr_from_url(&url);
 
@@ -110,7 +110,7 @@ fn main() {
     let period = time::Duration::from_secs(interval);
     let timeout = time::Duration::from_secs(2);
     let ssdp = SSDPManager::new(url.as_str(), period, Some(timeout));
-    let (timer, guard) = ssdp.start_broadcast();
+    let (_timer, _guard) = ssdp.start_broadcast();
 
     ssdp.start_listener().join().
         expect("Panicked !");

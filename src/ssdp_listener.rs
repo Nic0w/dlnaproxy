@@ -1,4 +1,4 @@
-use log::{info, trace, warn, debug};
+use log::{info, trace, warn};
 
 use std::{
     sync::Arc,
@@ -75,7 +75,7 @@ fn parse_ssdp(buffer: &[u8]) -> Result<(String, HashMap<String, String>)> {
         map_err(|_| "Failed to parse packet as SSDP.")?;
 
     let method = req.method.map(|s| String::from(s))
-        .ok_or_else(|| "No method SSDP found.")?;
+        .ok_or_else(|| "No SSDP method found.")?;
 
     let mut header_map: HashMap<String, String> = HashMap::with_capacity(headers.len());
     let mut i = 0;

@@ -1,7 +1,6 @@
-use log::{info, trace, warn, debug};
+use log::{ trace, debug };
 
-use std::net::ToSocketAddrs;
-use std::net::UdpSocket;
+use std::net::{ UdpSocket, ToSocketAddrs };
 
 use serde::Deserialize;
 use reqwest::{
