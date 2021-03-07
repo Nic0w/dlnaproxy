@@ -18,7 +18,6 @@ mod tcp_proxy;
 
 
 use std::{
-    thread,
     time,
     net::{
         SocketAddr,

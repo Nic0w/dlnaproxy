@@ -2,7 +2,7 @@ use log::{info, trace, warn, debug};
 
 use std::{
     net::{
-     IpAddr, Ipv4Addr, SocketAddr, TcpListener, TcpStream
+     SocketAddr, TcpListener, TcpStream
     },
     sync::Arc,
     thread::{

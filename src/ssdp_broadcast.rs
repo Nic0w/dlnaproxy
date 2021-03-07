@@ -2,11 +2,7 @@ use log::{info, trace, warn, debug};
 
 use std::net::UdpSocket;
 use std::sync::Arc;
-use serde::Deserialize;
-use reqwest::{
-    header::SERVER,
-    blocking
-};
+use reqwest::blocking;
 
 use crate::ssdp_packet::SSDPPacket;
 use crate::ssdp_utils::{ self, Result };
