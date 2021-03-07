@@ -1,14 +1,17 @@
 use log::{info, trace, warn, debug};
 
+use std::net::SocketAddr;
 use std::{
     sync::Arc,
     net::UdpSocket,
     collections::HashMap
 };
+use reqwest::blocking;
 
 use httparse::{Request, EMPTY_HEADER};
 
-use crate::ssdp_broadcast::SSDPBroadcast;
+use crate::ssdp_packet::SSDPPacket;
+use crate::ssdp_utils::{ self, Result };
 
 /*
     SSDP RFC for reference: https://tools.ietf.org/html/draft-cai-ssdp-v1-03
@@ -16,16 +19,38 @@ use crate::ssdp_broadcast::SSDPBroadcast;
 
 pub struct SSDPListener {
     ssdp_socket: UdpSocket,
-    broadcaster: Arc<SSDPBroadcast>
+    http_client: Arc<blocking::Client>,
+    desc_url: String
 }
 
 impl SSDPListener {
 
-    pub fn new(ssdp_socket: UdpSocket, broadcaster: Arc<SSDPBroadcast>) -> Self {
+    pub fn new(ssdp_socket: UdpSocket, client: Arc<blocking::Client>, desc_url: &str) -> Self {
         SSDPListener {
             ssdp_socket: ssdp_socket,
-            broadcaster: broadcaster
+            http_client: client,
+            desc_url: desc_url.into()
         }
+    }
+
+    fn ssdp_ok(&self, dest: SocketAddr) -> Result<()> {
+
+        trace!(target: "dlnaproxy", "Fetching remote server's info.");
+        let endpoint_info = ssdp_utils::fetch_endpoint_info(&self.http_client, &self.desc_url)?;
+
+        let ssdp_ok = SSDPPacket::Ok {
+            desc_url: self.desc_url.clone(),
+            unique_device_name: endpoint_info.unique_device_name,
+            device_type: endpoint_info.device_type,
+            server_ua: endpoint_info.server
+        };
+
+        trace!(target: "dlnaproxy", "{}", ssdp_ok.to_string());
+
+        ssdp_ok.send_to(&self.ssdp_socket, dest)
+            .map_err(|_| "Failed to send on UDP socket")?;
+
+        Ok(debug!(target: "dlnaproxy", "Sent ssdp:ok packet !"))
     }
 
     pub fn do_listen(&self) {
@@ -49,18 +74,16 @@ impl SSDPListener {
             let st_header = ssdp_headers.get("ST");
             let _man_header = ssdp_headers.get("MAN");
 
-            let src_addr = src_addr.to_string();
-
             //We have a valid ssdp:discover request, although the rfc is soooooo vague it hurts.
             if ssdp_method == "M-SEARCH" && st_header.is_some() {
                 if st_header.unwrap() == "urn:schemas-upnp-org:device:MediaServer:1" {
                     info!(target: "dlnaproxy", "Responding to a M-SEARCH request for a MediaServer from {sender}.", sender=src_addr);
 
-                    if let Err(msg) = self.broadcaster.do_ssdp_alive()  {
+                    if let Err(msg) = self.ssdp_ok(src_addr) {
                         warn!(target: "dlnaproxy", "Couldn't send ssdp:alive: {}", msg);
                     }
                     else {
-                        info!(target: "dlnaproxy", "Broadcasted on local SSDP channel!");
+                        info!(target: "dlnaproxy", "Sent ssdp:ok on local SSDP channel!");
                     }
                 }
             }
@@ -68,7 +91,7 @@ impl SSDPListener {
     }
 }
 
-fn parse_ssdp(buffer: &[u8]) -> Result<(String, HashMap<String, String>), &'static str> {
+fn parse_ssdp(buffer: &[u8]) -> Result<(String, HashMap<String, String>)> {
 
     let mut headers = [EMPTY_HEADER; 16];
     let mut req = Request::new(&mut headers);

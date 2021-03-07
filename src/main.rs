@@ -9,10 +9,13 @@ extern crate fern;
 extern crate log;
 extern crate nix;
 
+mod ssdp_packet;
+mod ssdp_utils;
 mod ssdp_broadcast;
 mod ssdp_listener;
 mod ssdp;
 mod tcp_proxy;
+
 
 use std::{
     thread,
@@ -77,7 +80,7 @@ fn main() {
         .map(|url| Url::parse(url).expect("Bad URL."))
         .expect("Missing description URL");
 
-    let interval: u64 = args.value_of("interval").unwrap_or("300").parse().
+    let interval: u64 = args.value_of("interval").unwrap_or("895").parse().
             expect("Bad value for interval");
 
     //let repeater_mode = args.is_present("repeater");

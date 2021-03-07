@@ -11,6 +11,7 @@ use std:: {
         UdpSocket,
     }
 };
+use reqwest::blocking;
 
 use log::{info, trace, warn, debug};
 
@@ -25,36 +26,37 @@ static SSDP_ADDRESS: (Ipv4Addr, u16) = (Ipv4Addr::new(239, 255, 255, 250), 1900)
 
 pub struct SSDPManager {
     broadcast_period: Duration,
+    
     broadcaster: Arc<SSDPBroadcast>,
-
     listener: Arc<SSDPListener>,
+
 }
 
 impl SSDPManager {
 
     pub fn new(endpoint_desc_url: &str, broadcast_period: Duration, connect_timeout: Option<Duration>) -> Self {
 
-        let http_client = reqwest::blocking::Client::builder().
+        let http_client = Arc::new(
+            blocking::Client::builder().
                 connect_timeout(connect_timeout).
                 build().
-                    expect("Failed to build HTTP client.");
+                    expect("Failed to build HTTP client.")
+        );
 
         let (ssdp1, ssdp2) = ssdp_socket_pair();
 
         let ssdp_broadcast = Arc::new(
-            SSDPBroadcast::new(ssdp1, http_client, endpoint_desc_url)
+            SSDPBroadcast::new(ssdp1, http_client.clone(), endpoint_desc_url)
         );
 
-        let broadcast_for_listener = ssdp_broadcast.clone();
-
         let ssdp_listener = Arc::new(
-            SSDPListener::new(ssdp2, broadcast_for_listener)
+            SSDPListener::new(ssdp2, http_client.clone(), endpoint_desc_url)
         );
 
         SSDPManager {
             broadcast_period: broadcast_period,
             broadcaster: ssdp_broadcast,
-            listener: ssdp_listener
+            listener: ssdp_listener,
         }
     }
 
