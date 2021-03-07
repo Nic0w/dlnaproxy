@@ -110,7 +110,15 @@ impl InteractiveSSDP {
         self.send_to(socket, dest, ssdp_ok, "ok")
     }
 
-    pub fn send_byebye(&self, _socket: &UdpSocket, _dest: impl ToSocketAddrs) -> Result<()> {
-        Err("Not implemented!")
+    pub fn send_byebye(&self, socket: &UdpSocket, dest: impl ToSocketAddrs) -> Result<()> {
+
+        let info = self.fetch_endpoint_info()?;
+
+        let ssdp_byebye = SSDPPacket::ByeBye {
+            unique_device_name: info.unique_device_name,
+            device_type: info.device_type
+        };
+
+        self.send_to(socket, dest, ssdp_byebye, "byebye")
     }
 }

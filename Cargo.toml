@@ -15,6 +15,7 @@ chrono = ""
 clap = ""
 nix = ""
 fern = ""
+ctrlc = ""
 
 [dependencies.log]
 version = ""

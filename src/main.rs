@@ -8,6 +8,7 @@ extern crate clap;
 extern crate fern;
 extern crate log;
 extern crate nix;
+extern crate ctrlc;
 
 mod ssdp_packet;
 mod ssdp_utils;

@@ -28,7 +28,7 @@ pub static SSDP_ADDRESS: (Ipv4Addr, u16) = (Ipv4Addr::new(239, 255, 255, 250), 1
 pub struct SSDPManager {
     broadcast_period: Duration,
     listener: Arc<SSDPListener>,
-    broadcaster: Arc<SSDPBroadcast>
+    broadcaster: Arc<SSDPBroadcast>,
 }
 
 impl SSDPManager {
@@ -51,6 +51,9 @@ impl SSDPManager {
             InteractiveSSDP::new(http_client, endpoint_desc_url, cache_max_age)
         );
 
+        interactive_ssdp.send_byebye(&ssdp1, SSDP_ADDRESS).
+            expect("Failed to send initial ssdp:byebye !");
+
         let listener = Arc::new(
             SSDPListener::new(ssdp1, interactive_ssdp.clone())
         );
@@ -62,7 +65,7 @@ impl SSDPManager {
         SSDPManager {
             broadcast_period: broadcast_period,
             listener: listener,
-            broadcaster: broadcaster
+            broadcaster: broadcaster,
         }
     }
 
@@ -74,6 +77,9 @@ impl SSDPManager {
         let now = Utc::now();
         let period = chrono::Duration::from_std(self.broadcast_period).
             expect("Too large period.");
+
+        ctrlc::set_handler(broadcast.sigint_handler()).
+            expect("Failed to set SIGING handler.");
 
         debug!(target: "dlnaproxy", "About to schedule broadcast every {}s", period.num_seconds());
 
