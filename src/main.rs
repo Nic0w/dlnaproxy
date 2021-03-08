@@ -9,6 +9,7 @@ extern crate fern;
 extern crate log;
 extern crate nix;
 extern crate ctrlc;
+extern crate toml;
 
 mod ssdp_packet;
 mod ssdp_utils;
@@ -20,22 +21,40 @@ mod tcp_proxy;
 
 use std::{
     time,
+    fs,
     net::{
         SocketAddr,
         ToSocketAddrs
     }
 };
 
+use serde::Deserialize;
+
 use reqwest::Url;
 
-use clap::{Arg, App, AppSettings};
+use clap::{Arg, App, AppSettings, ArgMatches };
 use log::{ trace, debug};
 
-
 use crate::ssdp::SSDPManager;
+use crate::ssdp_utils::Result;
 use crate::tcp_proxy::TCPProxy;
 
-fn main() {
+#[derive(Deserialize)]
+struct RawConfig {
+    description_url: Option<String>,
+    period: Option<String>,
+    proxy: Option<String>,
+    verbose: Option<u64>
+}
+
+struct Config {
+    description_url: Url,
+    period: time::Duration,
+    proxy: Option<SocketAddr>,
+    verbose: log::LevelFilter
+}
+
+fn main() -> Result<()> {
 
     let args = App::new("DLNAProxy")
         .setting(AppSettings::ArgRequiredElseHelp)
@@ -48,18 +67,13 @@ fn main() {
             .value_name("URL")
             .help("URL pointing to the remote DLNA server's root XML description.")
             .takes_value(true)
-            .required(true))
+            .required_unless("config"))
         .arg(Arg::with_name("interval")
             .short("i")
             .long("interval")
             .value_name("DURATION")
             .help("Interval at which we will check the remote server's presence and broadcast on its behalf, in seconds.")
             .takes_value(true))
-        /*.arg(Arg::with_name("repeater")
-            .short("r")
-            .long("repeater")
-            .takes_value(false)
-            .help("Disable proxy mode. The description URL will be broadcasted as is on the local network. Some DLNA devices don't like that."))*/
         .arg(Arg::with_name("proxy")
             .short("p")
             .long("proxy")
@@ -72,23 +86,22 @@ fn main() {
             .takes_value(false)
             .multiple(true)
             .help("Verbosity level. The more v, the more verbose."))
+        .arg(Arg::with_name("config")
+            .short("c")
+            .long("config")
+            .takes_value(true)
+            .conflicts_with_all(&["description-url", "interval", "proxy"])
+            .value_name("/path/to/config.conf")
+            .help("TOML config file."))
         .get_matches();
 
-    let verbosity = init_logging(args.occurrences_of("verbose"));
+    let config = get_config(args)?;
 
-    let mut url = args.value_of("description-url")
-        .map(|url| Url::parse(url).expect("Bad URL."))
-        .expect("Missing description URL");
+    init_logging(config.verbose);
 
-    let interval: u64 = args.value_of("interval").unwrap_or("895").parse().
-            expect("Bad value for interval");
+    let mut url = config.description_url;
 
-    //let repeater_mode = args.is_present("repeater");
-
-    let parsed_addr : Option<SocketAddr> = args.value_of("proxy").
-        map(|addr| addr.parse().expect("Bad proxy address"));
-
-    let _tcp_proxy_thread = if let Some(proxy_addr) = parsed_addr {
+    let _tcp_proxy_thread = if let Some(proxy_addr) = config.proxy {
 
         let server_addr = sockaddr_from_url(&url);
 
@@ -105,16 +118,66 @@ fn main() {
     }
     else { None };
 
-    debug!(target: "dlnaproxy", "Desc URL: '{}', interval: {}s, verbosity: {}", url, interval, verbosity);
+    debug!(target: "dlnaproxy", "Desc URL: '{}', interval: {}s, verbosity: {}", url, config.period.as_secs(), config.verbose);
 
-
-    let period = time::Duration::from_secs(interval);
     let timeout = time::Duration::from_secs(2);
-    let ssdp = SSDPManager::new(url.as_str(), period, Some(timeout));
+    let ssdp = SSDPManager::new(url.as_str(), config.period, Some(timeout));
     let (_timer, _guard) = ssdp.start_broadcast();
 
     ssdp.start_listener().join().
         expect("Panicked !");
+
+    Ok(())
+}
+
+fn get_config(args: ArgMatches) -> Result<Config> {
+
+    let config_as_file = args.value_of("config")
+        .map(|file| fs::read_to_string(file).map_err(|_| "Could not open/read config file."))
+        .transpose()?;
+
+    let raw_config = if let Some(config_file) = config_as_file {
+
+        toml::from_str(&config_file).
+            map_err(|e| { eprintln!("{}", e); "failed to parse config file."})
+    }
+    else {
+        Ok(RawConfig {
+            description_url: args.value_of("description-url")
+                .map(|s| s.to_owned()),
+
+            period: args.value_of("interval")
+                .map(|s| s.to_owned()),
+
+            proxy: args.value_of("proxy")
+                .map(|s| s.to_owned()),
+
+            verbose: Some(args.occurrences_of("verbose"))
+        })
+    }?;
+
+    Ok(Config {
+        description_url: raw_config.description_url
+            .ok_or("Missing description URL")
+            .and_then(|s| Url::parse(&s).map_err(|_| "Bad URL."))?,
+
+        period: raw_config.period
+            .map_or(Ok(895), |v| v.parse::<u64>().map_err(|_| "Bad value for interval."))
+            .map(|secs| time::Duration::from_secs(secs))?,
+
+        proxy: raw_config.proxy.
+            map(|s| s.parse().map_err(|_| "Bad address")).
+            transpose()?,
+
+        verbose: raw_config.verbose.map_or(log::LevelFilter::Warn,
+            |v| match v {
+                0 => log::LevelFilter::Warn,
+                1 => log::LevelFilter::Info,
+                2 => log::LevelFilter::Debug,
+                3..=u64::MAX => log::LevelFilter::Trace
+            }
+        )
+    })
 }
 
 fn sockaddr_from_url(url: &Url) -> SocketAddr {
@@ -135,14 +198,7 @@ fn sockaddr_from_url(url: &Url) -> SocketAddr {
         to_owned()
 }
 
-fn init_logging(verbosity: u64) -> log::LevelFilter {
-
-    let level: log::LevelFilter = match verbosity {
-        0 => log::LevelFilter::Warn,
-        1 => log::LevelFilter::Info,
-        2 => log::LevelFilter::Debug,
-        3..=u64::MAX => log::LevelFilter::Trace
-    };
+fn init_logging(verbosity: log::LevelFilter) -> log::LevelFilter {
 
     fern::Dispatch::new().
         format(|out, message, record| {
@@ -157,9 +213,10 @@ fn init_logging(verbosity: u64) -> log::LevelFilter {
         // by default only accept warning messages from libraries so we don't spam
         level(log::LevelFilter::Warn).
         // but accept Info and Debug and Trace for our app.
-        level_for("dlnaproxy", level).
+        level_for("dlnaproxy", verbosity).
         chain(std::io::stdout()).
         apply().
             expect("Failed to configure logging.");
-    level
+
+    verbosity
 }

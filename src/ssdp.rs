@@ -51,6 +51,8 @@ impl SSDPManager {
             InteractiveSSDP::new(http_client, endpoint_desc_url, cache_max_age)
         );
 
+        //We send an initial byebye before all else because... that's how MiniDLNA does it.
+        //Guessing that it's for clearing any cache that might exist on listening remote devices.
         interactive_ssdp.send_byebye(&ssdp1, SSDP_ADDRESS).
             expect("Failed to send initial ssdp:byebye !");
 
