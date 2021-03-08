@@ -1,0 +1,13 @@
+[Unit]
+Description=DLNA Proxy
+After=network-online.target
+
+[Service]
+Type=simple
+User=pi
+Group=pi
+ExecStart=/usr/bin/dlnaproxy -c /etc/dlnaproxy.toml
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
