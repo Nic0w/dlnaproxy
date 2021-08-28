@@ -21,10 +21,10 @@ pub struct SSDPListener {
 
 impl SSDPListener {
 
-    pub fn new(ssdp_socket: UdpSocket, helper: Arc<InteractiveSSDP>) -> Self {
+    pub fn new(ssdp_socket: UdpSocket, ssdp_helper: Arc<InteractiveSSDP>) -> Self {
         SSDPListener {
-            ssdp_socket: ssdp_socket,
-            ssdp_helper: helper
+            ssdp_socket,
+            ssdp_helper
         }
     }
 
@@ -50,8 +50,8 @@ impl SSDPListener {
             let _man_header = ssdp_headers.get("MAN");
 
             //We have a valid ssdp:discover request, although the rfc is soooooo vague it hurts.
-            if ssdp_method == "M-SEARCH" && st_header.is_some() {
-                if st_header.unwrap() == "urn:schemas-upnp-org:device:MediaServer:1" {
+            if let Some(header) = st_header {
+                if ssdp_method == "M-SEARCH" && header == "urn:schemas-upnp-org:device:MediaServer:1"{
                     info!(target: "dlnaproxy", "Responding to a M-SEARCH request for a MediaServer from {sender}.", sender=src_addr);
 
                     if let Err(msg) = self.ssdp_helper.send_ok(&self.ssdp_socket, src_addr) {
@@ -59,7 +59,7 @@ impl SSDPListener {
                     }
                     else {
                         info!(target: "dlnaproxy", "Sent ssdp:ok on local SSDP channel!");
-                    }
+                    }                    
                 }
             }
         }
@@ -74,8 +74,8 @@ fn parse_ssdp(buffer: &[u8]) -> Result<(String, HashMap<String, String>)> {
     req.parse(buffer).
         map_err(|_| "Failed to parse packet as SSDP.")?;
 
-    let method = req.method.map(|s| String::from(s))
-        .ok_or_else(|| "No SSDP method found.")?;
+    let method = req.method.map(String::from)
+        .ok_or("No SSDP method found.")?;
 
     let mut header_map: HashMap<String, String> = HashMap::with_capacity(headers.len());
     let mut i = 0;

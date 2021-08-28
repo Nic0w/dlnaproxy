@@ -19,12 +19,12 @@ impl SSDPBroadcast {
     pub fn new(ssdp_socket: UdpSocket, ssdp_helper: Arc<InteractiveSSDP>) -> Self {
 
         SSDPBroadcast {
-            ssdp_socket: ssdp_socket,
-            ssdp_helper: ssdp_helper
+            ssdp_socket,
+            ssdp_helper
         }
     }
 
-    pub fn sigint_handler(&self) -> impl FnMut() -> () {
+    pub fn sigint_handler(&self) -> impl FnMut() {
 
         let socket = self.ssdp_socket.try_clone().
             unwrap();

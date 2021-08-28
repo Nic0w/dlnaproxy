@@ -27,7 +27,7 @@ impl TCPProxy {
         thread::spawn(self.listen_loop(listener, to))
     }
 
-    fn listen_loop(&self, listener: TcpListener, origin: SocketAddr) -> impl FnOnce() -> () {
+    fn listen_loop(&self, listener: TcpListener, origin: SocketAddr) -> impl FnOnce() {
         move || {
 
             for incoming_stream in listener.incoming() {

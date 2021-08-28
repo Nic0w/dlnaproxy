@@ -61,13 +61,13 @@ impl SSDPManager {
         );
 
         let broadcaster = Arc::new(
-            SSDPBroadcast::new(ssdp2, interactive_ssdp.clone())
+            SSDPBroadcast::new(ssdp2, interactive_ssdp)
         );
 
         SSDPManager {
-            broadcast_period: broadcast_period,
-            listener: listener,
-            broadcaster: broadcaster,
+            broadcast_period,
+            listener,
+            broadcaster,
         }
     }
 

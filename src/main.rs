@@ -174,7 +174,7 @@ fn get_config(args: ArgMatches) -> Result<Config> {
 
         period: raw_config.period
             .map_or(Ok(895), |v| v.parse::<u64>().map_err(|_| "Bad value for interval."))
-            .map(|secs| time::Duration::from_secs(secs))?,
+            .map(time::Duration::from_secs)?,
 
         proxy: raw_config.proxy.
             map(|s| s.parse().map_err(|_| "Bad address")).

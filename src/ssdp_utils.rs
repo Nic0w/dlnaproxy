@@ -44,7 +44,7 @@ impl InteractiveSSDP {
         InteractiveSSDP {
                 http_client: client,
                 remote_desc_url: url.into(),
-                cache_max_age: cache_max_age
+                cache_max_age
         }
     }
 
@@ -57,7 +57,7 @@ impl InteractiveSSDP {
 
         let server_ua = endpoint_response.headers().get(SERVER).
             map(|hv| String::from_utf8_lossy(hv.as_bytes()).to_string()).
-            unwrap_or("DLNAProxy/1.0".into());
+            unwrap_or_else(|| "DLNAProxy/1.0".into());
 
         let body = endpoint_response.text().
             map_err(|_| "Failed to parse response's body as text.")?;
@@ -78,7 +78,8 @@ impl InteractiveSSDP {
 
         ssdp_packet.send_to(socket, dest)?;
 
-        Ok(debug!(target: "dlnaproxy", "Sent ssdp:{} packet !", p_type))
+        debug!(target: "dlnaproxy", "Sent ssdp:{} packet !", p_type);
+        Ok(())
     }
 
     pub fn send_alive(&self, socket: &UdpSocket, dest: impl ToSocketAddrs) -> Result<()> {
