@@ -44,13 +44,15 @@ struct RawConfig {
     description_url: Option<String>,
     period: Option<String>,
     proxy: Option<String>,
-    verbose: Option<u64>
+    verbose: Option<u64>,
+    iface: Option<String>
 }
 
 struct Config {
     description_url: Url,
     period: time::Duration,
     proxy: Option<SocketAddr>,
+    broadcast_iface: Option<String>,
     verbose: log::LevelFilter
 }
 
@@ -69,7 +71,7 @@ fn main() -> Result<()> {
             .takes_value(true)
             .required_unless("config"))
         .arg(Arg::with_name("interval")
-            .short("i")
+            .short("d")
             .long("interval")
             .value_name("DURATION")
             .help("Interval at which we will check the remote server's presence and broadcast on its behalf, in seconds.")
@@ -93,6 +95,12 @@ fn main() -> Result<()> {
             .conflicts_with_all(&["description-url", "interval", "proxy"])
             .value_name("/path/to/config.conf")
             .help("TOML config file."))
+        .arg(Arg::with_name("broadcast-iface")
+            .short("i")
+            .long("iface")
+            .value_name("IFACE")
+            .help("Network interface on which to broadcast (requires root or CAP_NET_RAW capability).")
+            .takes_value(true))
         .get_matches();
 
     let config = get_config(args)?;
@@ -121,7 +129,7 @@ fn main() -> Result<()> {
     debug!(target: "dlnaproxy", "Desc URL: '{}', interval: {}s, verbosity: {}", url, config.period.as_secs(), config.verbose);
 
     let timeout = time::Duration::from_secs(2);
-    let ssdp = SSDPManager::new(url.as_str(), config.period, Some(timeout));
+    let ssdp = SSDPManager::new(url.as_str(), config.period, Some(timeout), config.broadcast_iface);
     let (_timer, _guard) = ssdp.start_broadcast();
 
     ssdp.start_listener().join().
@@ -152,6 +160,9 @@ fn get_config(args: ArgMatches) -> Result<Config> {
             proxy: args.value_of("proxy")
                 .map(|s| s.to_owned()),
 
+            iface: args.value_of("broadcast-iface")
+                .map(|s| s.to_owned()),
+
             verbose: Some(args.occurrences_of("verbose"))
         })
     }?;
@@ -168,6 +179,8 @@ fn get_config(args: ArgMatches) -> Result<Config> {
         proxy: raw_config.proxy.
             map(|s| s.parse().map_err(|_| "Bad address")).
             transpose()?,
+        
+        broadcast_iface: raw_config.iface,
 
         verbose: raw_config.verbose.map_or(log::LevelFilter::Warn,
             |v| match v {

@@ -16,7 +16,7 @@ use reqwest::blocking;
 use log::{info, warn, debug};
 
 use chrono::Utc;
-use nix::sys::socket::{self, sockopt::ReuseAddr};
+use nix::sys::socket::{self, sockopt::ReuseAddr, sockopt::BindToDevice};
 
 
 use crate::ssdp_utils::InteractiveSSDP;
@@ -33,14 +33,14 @@ pub struct SSDPManager {
 
 impl SSDPManager {
 
-    pub fn new(endpoint_desc_url: &str, broadcast_period: Duration, connect_timeout: Option<Duration>) -> Self {
+    pub fn new(endpoint_desc_url: &str, broadcast_period: Duration, connect_timeout: Option<Duration>, broadcast_iface: Option<String>) -> Self {
 
         let http_client = blocking::Client::builder().
                 connect_timeout(connect_timeout).
                 build().
                     expect("Failed to build HTTP client.");
 
-        let (ssdp1, ssdp2) = ssdp_socket_pair();
+        let (ssdp1, ssdp2) = ssdp_socket_pair(broadcast_iface);
 
         let cache_max_age = match broadcast_period.as_secs() {
             n if n < 20 => 20,
@@ -106,13 +106,20 @@ impl SSDPManager {
     }
 }
 
-fn ssdp_socket_pair() -> (UdpSocket, UdpSocket) {
+fn ssdp_socket_pair(broadcast_iface: Option<String>) -> (UdpSocket, UdpSocket) {
 
     let ssdp1 = UdpSocket::bind(SSDP_ADDRESS).
         expect("Failed to bind socket");
 
     socket::setsockopt(ssdp1.as_raw_fd(), ReuseAddr, &true).
         expect("Failed to set SO_REUSEADDR.");
+
+    if let Some(iface) = broadcast_iface {
+        let iface = std::ffi::OsString::from(iface);
+
+        socket::setsockopt(ssdp1.as_raw_fd(), BindToDevice, &iface).
+            expect("Failed to set SO_BINDTODEVICE.");
+    }
 
     ssdp1.join_multicast_v4(&SSDP_ADDRESS.0, &Ipv4Addr::UNSPECIFIED).
         expect("Failed to join multicast group");
