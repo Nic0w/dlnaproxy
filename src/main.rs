@@ -1,39 +1,35 @@
-extern crate httparse;
-extern crate reqwest;
-extern crate serde;
-extern crate quick_xml;
-extern crate timer;
 extern crate chrono;
 extern crate clap;
+extern crate ctrlc;
 extern crate fern;
+extern crate httparse;
 extern crate log;
 extern crate nix;
-extern crate ctrlc;
+extern crate quick_xml;
+extern crate reqwest;
+extern crate serde;
+extern crate timer;
 extern crate toml;
 
+mod ssdp;
+mod ssdp_broadcast;
+mod ssdp_listener;
 mod ssdp_packet;
 mod ssdp_utils;
-mod ssdp_listener;
-mod ssdp_broadcast;
-mod ssdp;
 mod tcp_proxy;
 
-
 use std::{
-    time,
     fs,
-    net::{
-        SocketAddr,
-        ToSocketAddrs
-    }
+    net::{SocketAddr, ToSocketAddrs},
+    time,
 };
 
 use serde::Deserialize;
 
 use reqwest::Url;
 
-use clap::{Arg, App, AppSettings, ArgMatches };
-use log::{ trace, debug};
+use clap::{App, AppSettings, Arg, ArgMatches};
+use log::{debug, trace};
 
 use crate::ssdp::SSDPManager;
 use crate::ssdp_utils::Result;
@@ -45,7 +41,7 @@ struct RawConfig {
     period: Option<String>,
     proxy: Option<String>,
     verbose: Option<u64>,
-    iface: Option<String>
+    iface: Option<String>,
 }
 
 struct Config {
@@ -53,11 +49,10 @@ struct Config {
     period: time::Duration,
     proxy: Option<SocketAddr>,
     broadcast_iface: Option<String>,
-    verbose: log::LevelFilter
+    verbose: log::LevelFilter,
 }
 
 fn main() -> Result<()> {
-
     let args = App::new("DLNAProxy")
         .setting(AppSettings::ArgRequiredElseHelp)
         .version("1.0")
@@ -110,109 +105,113 @@ fn main() -> Result<()> {
     let mut url = config.description_url;
 
     let _tcp_proxy_thread = if let Some(proxy_addr) = config.proxy {
-
         let server_addr = sockaddr_from_url(&url);
 
-        url.set_ip_host(proxy_addr.ip()).
-            unwrap();
-        url.set_port(Some(proxy_addr.port())).
-        unwrap();
+        url.set_ip_host(proxy_addr.ip()).unwrap();
+        url.set_port(Some(proxy_addr.port())).unwrap();
 
         let proxy = TCPProxy;
 
         trace!(target: "dlnaproxy", "server: {}", server_addr);
 
         Some(proxy.start(server_addr, proxy_addr))
-    }
-    else { None };
+    } else {
+        None
+    };
 
     debug!(target: "dlnaproxy", "Desc URL: '{}', interval: {}s, verbosity: {}", url, config.period.as_secs(), config.verbose);
 
     let timeout = time::Duration::from_secs(2);
-    let ssdp = SSDPManager::new(url.as_str(), config.period, Some(timeout), config.broadcast_iface);
+    let ssdp = SSDPManager::new(
+        url.as_str(),
+        config.period,
+        Some(timeout),
+        config.broadcast_iface,
+    );
     let (_timer, _guard) = ssdp.start_broadcast();
 
-    ssdp.start_listener().join().
-        expect("Panicked !");
+    ssdp.start_listener().join().expect("Panicked !");
 
     Ok(())
 }
 
 fn get_config(args: ArgMatches) -> Result<Config> {
-
-    let config_as_file = args.value_of("config")
+    let config_as_file = args
+        .value_of("config")
         .map(|file| fs::read_to_string(file).map_err(|_| "Could not open/read config file."))
         .transpose()?;
 
     let raw_config = if let Some(config_file) = config_as_file {
-
-        toml::from_str(&config_file).
-            map_err(|e| { eprintln!("{}", e); "failed to parse config file."})
-    }
-    else {
+        toml::from_str(&config_file).map_err(|e| {
+            eprintln!("{}", e);
+            "failed to parse config file."
+        })
+    } else {
         Ok(RawConfig {
-            description_url: args.value_of("description-url")
-                .map(|s| s.to_owned()),
+            description_url: args.value_of("description-url").map(|s| s.to_owned()),
 
-            period: args.value_of("interval")
-                .map(|s| s.to_owned()),
+            period: args.value_of("interval").map(|s| s.to_owned()),
 
-            proxy: args.value_of("proxy")
-                .map(|s| s.to_owned()),
+            proxy: args.value_of("proxy").map(|s| s.to_owned()),
 
-            iface: args.value_of("broadcast-iface")
-                .map(|s| s.to_owned()),
+            iface: args.value_of("broadcast-iface").map(|s| s.to_owned()),
 
-            verbose: Some(args.occurrences_of("verbose"))
+            verbose: Some(args.occurrences_of("verbose")),
         })
     }?;
 
     Ok(Config {
-        description_url: raw_config.description_url
+        description_url: raw_config
+            .description_url
             .ok_or("Missing description URL")
             .and_then(|s| Url::parse(&s).map_err(|_| "Bad URL."))?,
 
-        period: raw_config.period
-            .map_or(Ok(895), |v| v.parse::<u64>().map_err(|_| "Bad value for interval."))
+        period: raw_config
+            .period
+            .map_or(Ok(895), |v| {
+                v.parse::<u64>().map_err(|_| "Bad value for interval.")
+            })
             .map(time::Duration::from_secs)?,
 
-        proxy: raw_config.proxy.
-            map(|s| s.parse().map_err(|_| "Bad address")).
-            transpose()?,
-        
+        proxy: raw_config
+            .proxy
+            .map(|s| s.parse().map_err(|_| "Bad address"))
+            .transpose()?,
+
         broadcast_iface: raw_config.iface,
 
-        verbose: raw_config.verbose.map_or(log::LevelFilter::Warn,
-            |v| match v {
+        verbose: raw_config
+            .verbose
+            .map_or(log::LevelFilter::Warn, |v| match v {
                 0 => log::LevelFilter::Warn,
                 1 => log::LevelFilter::Info,
                 2 => log::LevelFilter::Debug,
-                3..=u64::MAX => log::LevelFilter::Trace
-            }
-        )
+                3..=u64::MAX => log::LevelFilter::Trace,
+            }),
     })
 }
 
 fn sockaddr_from_url(url: &Url) -> SocketAddr {
-    let host = url.host().
-        expect("Unsupported URL.");
+    let host = url.host().expect("Unsupported URL.");
 
-    let port: u16 = url.port_or_known_default().
-        expect("Unknown port or scheme.");
+    let port: u16 = url
+        .port_or_known_default()
+        .expect("Unknown port or scheme.");
 
     let address = format!("{}:{}", host, port);
 
-    let addresses: Vec<SocketAddr> = address.to_socket_addrs().
-        expect("Couldn't resolve or build socket address from submitted URL.").
-        collect();
+    let addresses: Vec<SocketAddr> = address
+        .to_socket_addrs()
+        .expect("Couldn't resolve or build socket address from submitted URL.")
+        .collect();
 
-    addresses.first().
-        expect("No valid socket address.").
-        to_owned()
+    addresses
+        .first()
+        .expect("No valid socket address.")
+        .to_owned()
 }
 
 fn init_logging(verbosity: log::LevelFilter) -> log::LevelFilter {
-
     fern::Dispatch::new().
         format(|out, message, record| {
             out.finish(format_args!(

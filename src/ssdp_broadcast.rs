@@ -1,13 +1,9 @@
-use log::{debug, warn, info};
+use log::{debug, info, warn};
 
-use std::{
-    net::UdpSocket,
-    sync::Arc,
-    process
-};
+use std::{net::UdpSocket, process, sync::Arc};
 
-use crate::ssdp_utils::{ Result, InteractiveSSDP };
 use crate::ssdp::SSDP_ADDRESS;
+use crate::ssdp_utils::{InteractiveSSDP, Result};
 
 pub struct SSDPBroadcast {
     ssdp_socket: UdpSocket,
@@ -15,19 +11,15 @@ pub struct SSDPBroadcast {
 }
 
 impl SSDPBroadcast {
-
     pub fn new(ssdp_socket: UdpSocket, ssdp_helper: Arc<InteractiveSSDP>) -> Self {
-
         SSDPBroadcast {
             ssdp_socket,
-            ssdp_helper
+            ssdp_helper,
         }
     }
 
     pub fn sigint_handler(&self) -> impl FnMut() {
-
-        let socket = self.ssdp_socket.try_clone().
-            unwrap();
+        let socket = self.ssdp_socket.try_clone().unwrap();
 
         let helper = self.ssdp_helper.clone();
 
