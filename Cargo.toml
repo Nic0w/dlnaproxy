@@ -1,36 +1,36 @@
 [package]
 name = "dlnaproxy"
-version = "0.2.2"
+version = "0.2.3"
 authors = ["Nic0w"]
-edition = "2018"
+edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [profile.release]
 lto = true
 
 [dependencies]
-httparse = ""
+httparse = "*"
 timer = { git = "https://github.com/Yoric/timer.rs", branch = "master" }
-chrono = ""
-clap = ""
-nix = ""
-fern = ""
-ctrlc = ""
-toml = ""
+chrono = "*"
+clap = "*"
+nix = "*"
+fern = "*"
+ctrlc = "*"
+toml = "*"
 
 [dependencies.log]
-version = ""
+version = "*"
 features = ["std"]
 
 [dependencies.reqwest]
 default-features = false
-version = ""
+version = "*"
 features = ["blocking"]
 
 [dependencies.serde]
-version = ""
+version = "*"
 features = ["derive"]
 
 [dependencies.quick-xml]
-version = ""
+version = "*"
 features = ["serialize"]
