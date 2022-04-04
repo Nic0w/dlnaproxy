@@ -21,14 +21,14 @@ mod tcp_proxy;
 use std::{
     fs,
     net::{SocketAddr, ToSocketAddrs},
-    time,
+    time, path::PathBuf,
 };
 
 use serde::Deserialize;
 
 use reqwest::Url;
 
-use clap::{App, AppSettings, Arg, ArgMatches};
+use clap::Parser;
 use log::{debug, trace};
 
 use crate::ssdp::SSDPManager;
@@ -38,9 +38,9 @@ use crate::tcp_proxy::TCPProxy;
 #[derive(Deserialize)]
 struct RawConfig {
     description_url: Option<String>,
-    period: Option<String>,
+    period: Option<u64>,
     proxy: Option<String>,
-    verbose: Option<u64>,
+    verbose: Option<usize>,
     iface: Option<String>,
 }
 
@@ -52,51 +52,39 @@ struct Config {
     verbose: log::LevelFilter,
 }
 
+/// Broadcast ssdp:alive messages on the local network's multicast SSDP channel on behalf of a remote DLNA server.
+#[derive(Parser, Debug)]
+#[clap(author, version, about, long_about = None)]
+struct CommandLineConf {
+
+    /// TOML config file.
+    #[clap(short, long, value_name = "/path/to/config.conf", conflicts_with_all(&["description-url", "interval", "proxy"]))] 
+    config: Option<PathBuf>,
+
+    /// URL pointing to the remote DLNA server's root XML description.
+    #[clap(short = 'u', long, value_name = "URL", required_unless_present("config"), parse(try_from_str = Url::parse) )]
+    description_url: Option<Url>,
+
+    /// Interval at which we will check the remote server's presence and broadcast on its behalf, in seconds.
+    #[clap(short = 'd', long, value_name = "DURATION")]
+    interval: Option<u64>,
+
+    /// IP address & port where to bind proxy.
+    #[clap(short = 'p', long, value_name = "IP:PORT", parse(try_from_str))]
+    proxy: Option<SocketAddr>,
+
+    /// Network interface on which to broadcast (requires root or CAP_NET_RAW capability).
+    #[clap(short, long, value_name = "IFACE", )] 
+    iface: Option<String>,
+
+    /// Verbosity level. The more v, the more verbose.
+    #[clap(short, long, parse(from_occurrences))] 
+    verbose: usize,
+}
+
 fn main() -> Result<()> {
-    let args = App::new("DLNAProxy")
-        .setting(AppSettings::ArgRequiredElseHelp)
-        .version("1.0")
-        .author("Nic0w")
-        .about("Broadcast ssdp:alive messages on the local network's multicast SSDP channel on behalf of a remote DLNA server.")
-        .arg(Arg::with_name("description-url")
-            .short("u")
-            .long("desc-url")
-            .value_name("URL")
-            .help("URL pointing to the remote DLNA server's root XML description.")
-            .takes_value(true)
-            .required_unless("config"))
-        .arg(Arg::with_name("interval")
-            .short("d")
-            .long("interval")
-            .value_name("DURATION")
-            .help("Interval at which we will check the remote server's presence and broadcast on its behalf, in seconds.")
-            .takes_value(true))
-        .arg(Arg::with_name("proxy")
-            .short("p")
-            .long("proxy")
-            .takes_value(true)
-            .value_name("IP:PORT")
-            .help("IP address to bind the proxy on."))
-        .arg(Arg::with_name("verbose")
-            .short("v")
-            .long("verbose")
-            .takes_value(false)
-            .multiple(true)
-            .help("Verbosity level. The more v, the more verbose."))
-        .arg(Arg::with_name("config")
-            .short("c")
-            .long("config")
-            .takes_value(true)
-            .conflicts_with_all(&["description-url", "interval", "proxy"])
-            .value_name("/path/to/config.conf")
-            .help("TOML config file."))
-        .arg(Arg::with_name("broadcast-iface")
-            .short("i")
-            .long("iface")
-            .value_name("IFACE")
-            .help("Network interface on which to broadcast (requires root or CAP_NET_RAW capability).")
-            .takes_value(true))
-        .get_matches();
+
+    let args = CommandLineConf::parse();
 
     let config = get_config(args)?;
 
@@ -135,59 +123,66 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-fn get_config(args: ArgMatches) -> Result<Config> {
-    let config_as_file = args
-        .value_of("config")
+fn get_config(args: CommandLineConf) -> Result<Config> {
+
+    println!("{:?}", args);
+
+    let config_as_file = args.config
         .map(|file| fs::read_to_string(file).map_err(|_| "Could not open/read config file."))
         .transpose()?;
 
-    let raw_config = if let Some(config_file) = config_as_file {
-        toml::from_str(&config_file).map_err(|e| {
-            eprintln!("{}", e);
-            "failed to parse config file."
-        })
-    } else {
-        Ok(RawConfig {
-            description_url: args.value_of("description-url").map(|s| s.to_owned()),
+    let (
+            description_url,
+            period,
+            proxy,
+            broadcast_iface,
+            verbose
 
-            period: args.value_of("interval").map(|s| s.to_owned()),
+        ) = if let Some(config_file) = config_as_file {
 
-            proxy: args.value_of("proxy").map(|s| s.to_owned()),
+            let raw_config: RawConfig = toml::from_str(&config_file).map_err(|e| {
+                eprintln!("{}", e);
+                "failed to parse config file."
+            })?;
 
-            iface: args.value_of("broadcast-iface").map(|s| s.to_owned()),
+            let desc_url = raw_config.description_url
+                .ok_or("Missing description URL")
+                .and_then(|s| Url::parse(&s).map_err(|_| "Bad URL."))?;
 
-            verbose: Some(args.occurrences_of("verbose")),
-        })
-    }?;
+            let period = raw_config.period;
+
+            let proxy: Option<SocketAddr> = raw_config.proxy
+                .as_deref()
+                .map(str::parse)
+                .transpose()
+                .map_err(|_| "Bad address")?;
+
+            (desc_url, period, proxy, raw_config.iface, raw_config.verbose)
+        }
+        else {
+            (
+                args.description_url.ok_or("Missing description URL")?,
+                args.interval,
+                args.proxy,
+                args.iface,
+                Some(args.verbose)
+            )
+        };
+
+    let period = period.or(Some(895))
+        .map(time::Duration::from_secs)
+        .unwrap();
+
+    let verbose = verbose
+        .map_or(log::LevelFilter::Warn, |v| match v {
+            0 => log::LevelFilter::Warn,
+            1 => log::LevelFilter::Info,
+            2 => log::LevelFilter::Debug,
+            _ => log::LevelFilter::Trace,
+    });
 
     Ok(Config {
-        description_url: raw_config
-            .description_url
-            .ok_or("Missing description URL")
-            .and_then(|s| Url::parse(&s).map_err(|_| "Bad URL."))?,
-
-        period: raw_config
-            .period
-            .map_or(Ok(895), |v| {
-                v.parse::<u64>().map_err(|_| "Bad value for interval.")
-            })
-            .map(time::Duration::from_secs)?,
-
-        proxy: raw_config
-            .proxy
-            .map(|s| s.parse().map_err(|_| "Bad address"))
-            .transpose()?,
-
-        broadcast_iface: raw_config.iface,
-
-        verbose: raw_config
-            .verbose
-            .map_or(log::LevelFilter::Warn, |v| match v {
-                0 => log::LevelFilter::Warn,
-                1 => log::LevelFilter::Info,
-                2 => log::LevelFilter::Debug,
-                3..=u64::MAX => log::LevelFilter::Trace,
-            }),
+        description_url, proxy, period, broadcast_iface, verbose
     })
 }
 
