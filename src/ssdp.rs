@@ -10,7 +10,11 @@ use std::{
 use log::{debug, info, warn};
 
 use chrono::Utc;
-use nix::sys::socket::{self, sockopt::BindToDevice, sockopt::ReuseAddr};
+
+#[cfg(any(target_os = "android", target_os = "linux"))]
+use nix::sys::socket::sockopt::BindToDevice;
+
+use nix::sys::socket::{self, sockopt::ReuseAddr, SetSockOpt};
 
 use crate::ssdp_broadcast::SSDPBroadcast;
 use crate::ssdp_listener::SSDPListener;
@@ -106,8 +110,12 @@ fn ssdp_socket_pair(broadcast_iface: Option<String>) -> (UdpSocket, UdpSocket) {
     if let Some(iface) = broadcast_iface {
         let iface = std::ffi::OsString::from(iface);
 
+        #[cfg(any(target_os = "android", target_os = "linux"))]
         socket::setsockopt(ssdp1.as_raw_fd(), BindToDevice, &iface)
             .expect("Failed to set SO_BINDTODEVICE.");
+
+        #[cfg(any(target_os = "macos"))]
+        panic!("Cannot set broadcast address on MacOS (yet)")
     }
 
     ssdp1
