@@ -1,6 +1,6 @@
 [package]
 name = "dlnaproxy"
-version = "0.2.4"
+version = "0.2.5"
 authors = ["Nic0w"]
 edition = "2021"
 
@@ -9,26 +9,26 @@ edition = "2021"
 lto = true
 
 [dependencies]
-httparse = "1.6.0"
+httparse = "1.8.0"
 timer = { git = "https://github.com/Yoric/timer.rs", branch = "master" }
-chrono = "0.4.19"
-clap = { version = "3.1.8", features = ["derive"] }
-nix = "0.23.1"
-fern = "0.6.0"
-ctrlc = "3.2.1"
-toml = "0.5.8"
+chrono = "0.4.23"
+clap = { version = "3.2.23", features = ["derive"] }
+nix = "0.23.2"
+fern = "0.6.1"
+ctrlc = "3.2.4"
+toml = "0.5.10"
 
 [dependencies.log]
-version = "0.4.16"
+version = "0.4.17"
 features = ["std"]
 
 [dependencies.reqwest]
 default-features = false
-version = "0.11.10"
+version = "0.11.13"
 features = ["blocking"]
 
 [dependencies.serde]
-version = "1.0.136"
+version = "1.0.152"
 features = ["derive"]
 
 [dependencies.quick-xml]

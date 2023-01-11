@@ -16,3 +16,8 @@ jobs:
     - uses: actions/checkout@v2
     - name: Build
       run: cargo build --verbose --release
+    - name: Release
+      uses: softprops/action-gh-release@v1
+      if: startsWith(github.ref, 'refs/tags/')
+      with:
+        files: target/release/dlnaproxy
