@@ -28,7 +28,7 @@ use serde::Deserialize;
 
 use reqwest::Url;
 
-use clap::Parser;
+use clap::{Parser, ArgAction};
 use log::{debug, trace};
 
 use crate::ssdp::SSDPManager;
@@ -62,7 +62,7 @@ struct CommandLineConf {
     config: Option<PathBuf>,
 
     /// URL pointing to the remote DLNA server's root XML description.
-    #[clap(short = 'u', long, value_name = "URL", required_unless_present("config"), parse(try_from_str = Url::parse) )]
+    #[clap(short = 'u', long, value_name = "URL", required_unless_present("config"), value_parser = Url::parse)]
     description_url: Option<Url>,
 
     /// Interval at which we will check the remote server's presence and broadcast on its behalf, in seconds.
@@ -70,7 +70,7 @@ struct CommandLineConf {
     interval: Option<u64>,
 
     /// IP address & port where to bind proxy.
-    #[clap(short = 'p', long, value_name = "IP:PORT", parse(try_from_str))]
+    #[clap(short = 'p', long, value_name = "IP:PORT", value_parser)]
     proxy: Option<SocketAddr>,
 
     /// Network interface on which to broadcast (requires root or CAP_NET_RAW capability).
@@ -78,7 +78,7 @@ struct CommandLineConf {
     iface: Option<String>,
 
     /// Verbosity level. The more v, the more verbose.
-    #[clap(short, long, parse(from_occurrences))] 
+    #[clap(short, long, action=ArgAction::Count)] 
     verbose: usize,
 }
 
