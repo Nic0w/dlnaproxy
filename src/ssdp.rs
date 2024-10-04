@@ -1,7 +1,7 @@
 use reqwest::blocking;
 use std::{
     net::{Ipv4Addr, UdpSocket},
-    os::{fd::AsFd as _, unix::io::AsRawFd},
+    os::fd::AsFd as _,
     sync::Arc,
     thread::{self, JoinHandle},
     time::Duration,
@@ -14,7 +14,7 @@ use chrono::Utc;
 #[cfg(any(target_os = "android", target_os = "linux"))]
 use nix::sys::socket::sockopt::BindToDevice;
 
-use nix::sys::socket::{self, sockopt::ReuseAddr, SetSockOpt};
+use nix::sys::socket::{self, sockopt::ReuseAddr};
 
 use crate::ssdp_broadcast::SSDPBroadcast;
 use crate::ssdp_listener::SSDPListener;
