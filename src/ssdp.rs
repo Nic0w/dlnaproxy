@@ -1,7 +1,7 @@
 use reqwest::blocking;
 use std::{
     net::{Ipv4Addr, UdpSocket},
-    os::unix::io::AsRawFd,
+    os::{fd::AsFd as _, unix::io::AsRawFd},
     sync::Arc,
     thread::{self, JoinHandle},
     time::Duration,
@@ -105,7 +105,7 @@ impl SSDPManager {
 fn ssdp_socket_pair(broadcast_iface: Option<String>) -> (UdpSocket, UdpSocket) {
     let ssdp1 = UdpSocket::bind(SSDP_ADDRESS).expect("Failed to bind socket");
 
-    socket::setsockopt(ssdp1.as_raw_fd(), ReuseAddr, &true).expect("Failed to set SO_REUSEADDR.");
+    socket::setsockopt(&ssdp1.as_fd(), ReuseAddr, &true).expect("Failed to set SO_REUSEADDR.");
 
     if let Some(iface) = broadcast_iface {
         let iface = std::ffi::OsString::from(iface);
