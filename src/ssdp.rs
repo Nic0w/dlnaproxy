@@ -20,6 +20,9 @@ use crate::ssdp_broadcast::SSDPBroadcast;
 use crate::ssdp_listener::SSDPListener;
 use crate::ssdp_utils::InteractiveSSDP;
 
+
+pub static DUMMY_ADDRESS: (Ipv4Addr, u16) = (Ipv4Addr::new(0, 0, 0, 0), 1900);
+
 pub static SSDP_ADDRESS: (Ipv4Addr, u16) = (Ipv4Addr::new(239, 255, 255, 250), 1900);
 
 pub struct SSDPManager {
@@ -101,9 +104,9 @@ impl SSDPManager {
         })
     }
 }
-
 fn ssdp_socket_pair(broadcast_iface: Option<String>) -> (UdpSocket, UdpSocket) {
-    let ssdp1 = UdpSocket::bind(SSDP_ADDRESS).expect("Failed to bind socket");
+
+    let ssdp1 = UdpSocket::bind(DUMMY_ADDRESS).expect("Failed to bind socket");
 
     socket::setsockopt(&ssdp1.as_fd(), ReuseAddr, &true).expect("Failed to set SO_REUSEADDR.");
 
@@ -111,7 +114,7 @@ fn ssdp_socket_pair(broadcast_iface: Option<String>) -> (UdpSocket, UdpSocket) {
         let iface = std::ffi::OsString::from(iface);
 
         #[cfg(any(target_os = "android", target_os = "linux"))]
-        socket::setsockopt(ssdp1.as_raw_fd(), BindToDevice, &iface)
+        socket::setsockopt(&ssdp1.as_fd(), BindToDevice, &iface)
             .expect("Failed to set SO_BINDTODEVICE.");
 
         #[cfg(any(target_os = "macos"))]
