@@ -47,7 +47,7 @@ impl SSDPManager {
 
         let cache_max_age = match broadcast_period.as_secs() {
             n if n < 20 => 20,
-            n => (n * 2),
+            n => n * 2,
         } as usize;
 
         let interactive_ssdp = Arc::new(InteractiveSSDP::new(
@@ -110,14 +110,17 @@ fn ssdp_socket_pair(broadcast_iface: Option<String>) -> (UdpSocket, UdpSocket) {
 
     socket::setsockopt(&ssdp1.as_fd(), ReuseAddr, &true).expect("Failed to set SO_REUSEADDR.");
 
-    if let Some(iface) = broadcast_iface {
-        let iface = std::ffi::OsString::from(iface);
+    if let Some(_iface) = broadcast_iface {
 
         #[cfg(any(target_os = "android", target_os = "linux"))]
-        socket::setsockopt(&ssdp1.as_fd(), BindToDevice, &iface)
-            .expect("Failed to set SO_BINDTODEVICE.");
+        {
+            let iface: std::ffi::OsString = std::ffi::OsString::from(_iface);
 
-        #[cfg(any(target_os = "macos"))]
+            socket::setsockopt(&ssdp1.as_fd(), BindToDevice, &_iface)
+            .expect("Failed to set SO_BINDTODEVICE.");
+        }
+        
+        #[cfg(target_os = "macos")]
         panic!("Cannot set broadcast address on MacOS (yet)")
     }
 
