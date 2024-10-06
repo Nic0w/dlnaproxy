@@ -4,7 +4,7 @@ use std::{collections::HashMap, net::UdpSocket, sync::Arc};
 
 use httparse::{Request, EMPTY_HEADER};
 
-use crate::ssdp_utils::{InteractiveSSDP, Result};
+use crate::ssdp::utils::{InteractiveSSDP, Result};
 
 /*
     SSDP RFC for reference: https://tools.ietf.org/html/draft-cai-ssdp-v1-03

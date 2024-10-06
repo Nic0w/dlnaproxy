@@ -16,10 +16,14 @@ use nix::sys::socket::sockopt::BindToDevice;
 
 use nix::sys::socket::{self, sockopt::ReuseAddr};
 
-use crate::ssdp_broadcast::SSDPBroadcast;
-use crate::ssdp_listener::SSDPListener;
-use crate::ssdp_utils::InteractiveSSDP;
+use crate::ssdp::broadcast::SSDPBroadcast;
+use crate::ssdp::listener::SSDPListener;
+use crate::ssdp::utils::InteractiveSSDP;
 
+pub mod broadcast;
+pub mod listener;
+pub mod packet;
+pub mod utils;
 
 pub static DUMMY_ADDRESS: (Ipv4Addr, u16) = (Ipv4Addr::new(0, 0, 0, 0), 1900);
 
@@ -116,10 +120,11 @@ fn ssdp_socket_pair(broadcast_iface: Option<String>) -> (UdpSocket, UdpSocket) {
         {
             let iface: std::ffi::OsString = std::ffi::OsString::from(_iface);
 
-            socket::setsockopt(&ssdp1.as_fd(), BindToDevice, &_iface)
+            socket::setsockopt(&ssdp1.as_fd(), BindToDevice, &iface)
             .expect("Failed to set SO_BINDTODEVICE.");
         }
         
+
         #[cfg(target_os = "macos")]
         panic!("Cannot set broadcast address on MacOS (yet)")
     }

@@ -4,7 +4,7 @@ use std::{
     net::{ToSocketAddrs, UdpSocket},
 };
 
-use crate::ssdp_utils::Result;
+use crate::ssdp::utils::Result;
 
 pub enum SSDPPacket {
     Alive {

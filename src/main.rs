@@ -12,10 +12,6 @@ extern crate timer;
 extern crate toml;
 
 mod ssdp;
-mod ssdp_broadcast;
-mod ssdp_listener;
-mod ssdp_packet;
-mod ssdp_utils;
 mod tcp_proxy;
 
 use std::{
@@ -32,7 +28,7 @@ use clap::{Parser, ArgAction};
 use log::{debug, trace};
 
 use crate::ssdp::SSDPManager;
-use crate::ssdp_utils::Result;
+use crate::ssdp::utils::Result;
 use crate::tcp_proxy::TCPProxy;
 
 #[derive(Deserialize)]

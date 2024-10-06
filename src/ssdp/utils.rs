@@ -5,7 +5,7 @@ use std::net::{ToSocketAddrs, UdpSocket};
 use reqwest::{blocking, header::SERVER};
 use serde::Deserialize;
 
-use crate::ssdp_packet::SSDPPacket;
+use crate::ssdp::packet::SSDPPacket;
 
 #[derive(Debug, Deserialize)]
 struct DLNADevice {

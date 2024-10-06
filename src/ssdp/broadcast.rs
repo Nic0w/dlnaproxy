@@ -3,7 +3,7 @@ use log::{debug, info, warn};
 use std::{net::UdpSocket, process, sync::Arc};
 
 use crate::ssdp::SSDP_ADDRESS;
-use crate::ssdp_utils::{InteractiveSSDP, Result};
+use crate::ssdp::utils::{InteractiveSSDP, Result};
 
 pub struct SSDPBroadcast {
     ssdp_socket: UdpSocket,
