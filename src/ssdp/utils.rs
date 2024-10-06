@@ -2,10 +2,10 @@ use log::{debug, trace};
 
 use std::net::{ToSocketAddrs, UdpSocket};
 
+use anyhow::Context;
+use anyhow::Result;
 use reqwest::{blocking, header::SERVER};
 use serde::Deserialize;
-use anyhow::Result;
-use anyhow::Context;
 
 use crate::ssdp::packet::SSDPPacket;
 
@@ -63,8 +63,8 @@ impl InteractiveSSDP {
             .text()
             .context("Failed to parse response's body as text.")?;
 
-        let device_description: DLNADescription = quick_xml::de::from_str(&body)
-            .context("Failed to parse device's XML description.")?;
+        let device_description: DLNADescription =
+            quick_xml::de::from_str(&body).context("Failed to parse device's XML description.")?;
 
         Ok(EndpointInfo {
             device_type: device_description.device.device_type,

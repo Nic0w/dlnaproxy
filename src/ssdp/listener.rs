@@ -4,11 +4,10 @@ use std::{collections::HashMap, net::UdpSocket, sync::Arc};
 
 use httparse::{Request, EMPTY_HEADER};
 
-use anyhow::Result;
 use anyhow::Context;
+use anyhow::Result;
 
-use crate::ssdp::utils::{InteractiveSSDP};
-
+use crate::ssdp::utils::InteractiveSSDP;
 
 /*
     SSDP RFC for reference: https://tools.ietf.org/html/draft-cai-ssdp-v1-03

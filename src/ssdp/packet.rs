@@ -6,7 +6,6 @@ use std::{
 
 use anyhow::{Context, Result};
 
-
 pub enum SSDPPacket {
     Alive {
         desc_url: String,

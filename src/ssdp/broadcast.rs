@@ -4,8 +4,8 @@ use std::{net::UdpSocket, process, sync::Arc};
 
 use anyhow::Result;
 
+use crate::ssdp::utils::InteractiveSSDP;
 use crate::ssdp::SSDP_ADDRESS;
-use crate::ssdp::utils::{InteractiveSSDP};
 
 pub struct SSDPBroadcast {
     ssdp_socket: UdpSocket,

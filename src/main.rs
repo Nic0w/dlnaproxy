@@ -17,16 +17,17 @@ mod tcp_proxy;
 use std::{
     fs,
     net::{SocketAddr, ToSocketAddrs},
-    time, path::PathBuf,
+    path::PathBuf,
+    time,
 };
 
 use serde::Deserialize;
 
 use reqwest::Url;
 
-use clap::{Parser, ArgAction};
-use log::{debug, trace};
 use anyhow::{anyhow, Context, Result};
+use clap::{ArgAction, Parser};
+use log::{debug, trace};
 
 use crate::ssdp::SSDPManager;
 use crate::tcp_proxy::TCPProxy;
@@ -52,9 +53,8 @@ struct Config {
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
 struct CommandLineConf {
-
     /// TOML config file.
-    #[clap(short, long, value_name = "/path/to/config.conf", conflicts_with_all(&["description-url", "interval", "proxy"]))] 
+    #[clap(short, long, value_name = "/path/to/config.conf", conflicts_with_all(&["description-url", "interval", "proxy"]))]
     config: Option<PathBuf>,
 
     /// URL pointing to the remote DLNA server's root XML description.
@@ -70,16 +70,15 @@ struct CommandLineConf {
     proxy: Option<SocketAddr>,
 
     /// Network interface on which to broadcast (requires root or CAP_NET_RAW capability).
-    #[clap(short, long, value_name = "IFACE", )] 
+    #[clap(short, long, value_name = "IFACE")]
     iface: Option<String>,
 
     /// Verbosity level. The more v, the more verbose.
-    #[clap(short, long, action=ArgAction::Count)] 
+    #[clap(short, long, action=ArgAction::Count)]
     verbose: usize,
 }
 
 fn main() -> Result<()> {
-
     let args = CommandLineConf::parse();
 
     let config = get_config(args)?;
@@ -120,62 +119,65 @@ fn main() -> Result<()> {
 }
 
 fn get_config(args: CommandLineConf) -> Result<Config> {
-
     println!("{:?}", args);
 
-    let config_as_file = args.config
+    let config_as_file = args
+        .config
         .map(|file| fs::read_to_string(file).context("Could not open/read config file."))
         .transpose()?;
 
-    let (
-            description_url,
-            period,
-            proxy,
-            broadcast_iface,
-            verbose
+    let (description_url, period, proxy, broadcast_iface, verbose) =
+        if let Some(config_file) = config_as_file {
+            let raw_config: RawConfig =
+                toml::from_str(&config_file).context("failed to parse config file.")?;
 
-        ) = if let Some(config_file) = config_as_file {
-
-            let raw_config: RawConfig = toml::from_str(&config_file).context("failed to parse config file.")?;
-
-            let desc_url = raw_config.description_url
+            let desc_url = raw_config
+                .description_url
                 .ok_or(anyhow!("Missing description URL"))
                 .and_then(|s| Url::parse(&s).context("Bad description URL."))?;
 
             let period = raw_config.period;
 
-            let proxy: Option<SocketAddr> = raw_config.proxy
+            let proxy: Option<SocketAddr> = raw_config
+                .proxy
                 .as_deref()
                 .map(str::parse)
                 .transpose()
                 .context("Bad proxy address")?;
 
-            (desc_url, period, proxy, raw_config.iface, raw_config.verbose)
-        }
-        else {
             (
-                args.description_url.ok_or(anyhow!("Missing description URL"))?,
+                desc_url,
+                period,
+                proxy,
+                raw_config.iface,
+                raw_config.verbose,
+            )
+        } else {
+            (
+                args.description_url
+                    .ok_or(anyhow!("Missing description URL"))?,
                 args.interval,
                 args.proxy,
                 args.iface,
-                Some(args.verbose)
+                Some(args.verbose),
             )
         };
 
-    let period = period.or(Some(895))
-        .map(time::Duration::from_secs)
-        .unwrap();
+    let period = period.or(Some(895)).map(time::Duration::from_secs).unwrap();
 
-    let verbose = verbose
-        .map_or(log::LevelFilter::Warn, |v| match v {
-            0 => log::LevelFilter::Warn,
-            1 => log::LevelFilter::Info,
-            2 => log::LevelFilter::Debug,
-            _ => log::LevelFilter::Trace,
+    let verbose = verbose.map_or(log::LevelFilter::Warn, |v| match v {
+        0 => log::LevelFilter::Warn,
+        1 => log::LevelFilter::Info,
+        2 => log::LevelFilter::Debug,
+        _ => log::LevelFilter::Trace,
     });
 
     Ok(Config {
-        description_url, proxy, period, broadcast_iface, verbose
+        description_url,
+        proxy,
+        period,
+        broadcast_iface,
+        verbose,
     })
 }
 

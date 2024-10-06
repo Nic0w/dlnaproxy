@@ -23,10 +23,10 @@ use crate::ssdp::listener::SSDPListener;
 use crate::ssdp::utils::InteractiveSSDP;
 
 pub mod broadcast;
+mod error;
 pub mod listener;
 pub mod packet;
 pub mod utils;
-mod error;
 
 pub static DUMMY_ADDRESS: (Ipv4Addr, u16) = (Ipv4Addr::new(0, 0, 0, 0), 1900);
 
@@ -112,21 +112,18 @@ impl SSDPManager {
     }
 }
 fn ssdp_socket_pair(broadcast_iface: Option<String>) -> Result<(UdpSocket, UdpSocket)> {
-
     let ssdp1 = UdpSocket::bind(DUMMY_ADDRESS).context("Failed to bind SSDP socket")?;
 
     socket::setsockopt(&ssdp1.as_fd(), ReuseAddr, &true).context("Failed to set SO_REUSEADDR.")?;
 
     if let Some(_iface) = broadcast_iface {
-
         #[cfg(any(target_os = "android", target_os = "linux"))]
         {
             let iface: std::ffi::OsString = std::ffi::OsString::from(_iface);
 
             socket::setsockopt(&ssdp1.as_fd(), BindToDevice, &iface)
-            .context("Failed to set SO_BINDTODEVICE.")?;
+                .context("Failed to set SO_BINDTODEVICE.")?;
         }
-        
 
         #[cfg(target_os = "macos")]
         panic!("Cannot set broadcast address on MacOS (yet)")
