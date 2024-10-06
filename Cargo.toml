@@ -23,3 +23,5 @@ log = { version = "0.4.22", features = ["std"] }
 reqwest = { version = "0.12.8", default-features = false, features = ["blocking"] }
 serde = { version = "1.0.210", features = ["derive"] }
 quick-xml = { version = "0.36.2", features = ["serialize"] }
+thiserror = "1.0.64"
+anyhow = "1.0.89"
