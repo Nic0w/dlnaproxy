@@ -4,7 +4,11 @@ use std::{collections::HashMap, net::UdpSocket, sync::Arc};
 
 use httparse::{Request, EMPTY_HEADER};
 
-use crate::ssdp::utils::{InteractiveSSDP, Result};
+use anyhow::Result;
+use anyhow::Context;
+
+use crate::ssdp::utils::{InteractiveSSDP};
+
 
 /*
     SSDP RFC for reference: https://tools.ietf.org/html/draft-cai-ssdp-v1-03
@@ -68,12 +72,12 @@ fn parse_ssdp(buffer: &[u8]) -> Result<(String, HashMap<String, String>)> {
     let mut req = Request::new(&mut headers);
 
     req.parse(buffer)
-        .map_err(|_| "Failed to parse packet as SSDP.")?;
+        .context("Failed to parse packet as SSDP.")?;
 
     let method = req
         .method
         .map(String::from)
-        .ok_or("No SSDP method found.")?;
+        .ok_or(super::error::Error::NoSSDPMethod)?;
 
     let mut header_map: HashMap<String, String> = HashMap::with_capacity(headers.len());
     let mut i = 0;

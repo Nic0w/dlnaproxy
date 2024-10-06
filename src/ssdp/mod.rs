@@ -7,6 +7,8 @@ use std::{
     time::Duration,
 };
 
+use anyhow::{Context, Result};
+
 use log::{debug, info, warn};
 
 use chrono::Utc;
@@ -24,6 +26,7 @@ pub mod broadcast;
 pub mod listener;
 pub mod packet;
 pub mod utils;
+mod error;
 
 pub static DUMMY_ADDRESS: (Ipv4Addr, u16) = (Ipv4Addr::new(0, 0, 0, 0), 1900);
 
@@ -41,13 +44,13 @@ impl SSDPManager {
         broadcast_period: Duration,
         connect_timeout: Option<Duration>,
         broadcast_iface: Option<String>,
-    ) -> Self {
+    ) -> Result<Self> {
         let http_client = blocking::Client::builder()
             .connect_timeout(connect_timeout)
             .build()
-            .expect("Failed to build HTTP client.");
+            .context("Failed to build HTTP client")?;
 
-        let (ssdp1, ssdp2) = ssdp_socket_pair(broadcast_iface);
+        let (ssdp1, ssdp2) = ssdp_socket_pair(broadcast_iface)?;
 
         let cache_max_age = match broadcast_period.as_secs() {
             n if n < 20 => 20,
@@ -64,17 +67,17 @@ impl SSDPManager {
         //Guessing that it's for clearing any cache that might exist on listening remote devices.
         interactive_ssdp
             .send_byebye(&ssdp1, SSDP_ADDRESS)
-            .expect("Failed to send initial ssdp:byebye !");
+            .context("Failed to send initial ssdp:byebye !")?;
 
         let listener = Arc::new(SSDPListener::new(ssdp1, interactive_ssdp.clone()));
 
         let broadcaster = Arc::new(SSDPBroadcast::new(ssdp2, interactive_ssdp));
 
-        SSDPManager {
+        Ok(SSDPManager {
             broadcast_period,
             listener,
             broadcaster,
-        }
+        })
     }
 
     pub fn start_broadcast(&self) -> (timer::Timer, timer::Guard) {
@@ -108,11 +111,11 @@ impl SSDPManager {
         })
     }
 }
-fn ssdp_socket_pair(broadcast_iface: Option<String>) -> (UdpSocket, UdpSocket) {
+fn ssdp_socket_pair(broadcast_iface: Option<String>) -> Result<(UdpSocket, UdpSocket)> {
 
-    let ssdp1 = UdpSocket::bind(DUMMY_ADDRESS).expect("Failed to bind socket");
+    let ssdp1 = UdpSocket::bind(DUMMY_ADDRESS).context("Failed to bind SSDP socket")?;
 
-    socket::setsockopt(&ssdp1.as_fd(), ReuseAddr, &true).expect("Failed to set SO_REUSEADDR.");
+    socket::setsockopt(&ssdp1.as_fd(), ReuseAddr, &true).context("Failed to set SO_REUSEADDR.")?;
 
     if let Some(_iface) = broadcast_iface {
 
@@ -121,7 +124,7 @@ fn ssdp_socket_pair(broadcast_iface: Option<String>) -> (UdpSocket, UdpSocket) {
             let iface: std::ffi::OsString = std::ffi::OsString::from(_iface);
 
             socket::setsockopt(&ssdp1.as_fd(), BindToDevice, &iface)
-            .expect("Failed to set SO_BINDTODEVICE.");
+            .context("Failed to set SO_BINDTODEVICE.")?;
         }
         
 
@@ -131,9 +134,9 @@ fn ssdp_socket_pair(broadcast_iface: Option<String>) -> (UdpSocket, UdpSocket) {
 
     ssdp1
         .join_multicast_v4(&SSDP_ADDRESS.0, &Ipv4Addr::UNSPECIFIED)
-        .expect("Failed to join multicast group");
+        .context("Failed to join SSDP multicast group.")?;
 
-    let ssdp2 = ssdp1.try_clone().expect("Failed to clone SSDP socket.");
+    let ssdp2 = ssdp1.try_clone().context("Failed to clone SSDP socket.")?;
 
-    (ssdp1, ssdp2)
+    Ok((ssdp1, ssdp2))
 }

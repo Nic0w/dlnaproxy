@@ -4,6 +4,8 @@ use std::net::{ToSocketAddrs, UdpSocket};
 
 use reqwest::{blocking, header::SERVER};
 use serde::Deserialize;
+use anyhow::Result;
+use anyhow::Context;
 
 use crate::ssdp::packet::SSDPPacket;
 
@@ -27,8 +29,6 @@ pub struct EndpointInfo {
     pub server: String,
 }
 
-pub type Result<T> = std::result::Result<T, &'static str>;
-
 pub struct InteractiveSSDP {
     http_client: blocking::Client,
     remote_desc_url: String,
@@ -51,7 +51,7 @@ impl InteractiveSSDP {
             .http_client
             .get(&self.remote_desc_url)
             .send()
-            .map_err(|_| "Failed to get description of remote endpoint.")?;
+            .context("Failed to get description of remote endpoint.")?;
 
         let server_ua = endpoint_response
             .headers()
@@ -61,10 +61,10 @@ impl InteractiveSSDP {
 
         let body = endpoint_response
             .text()
-            .map_err(|_| "Failed to parse response's body as text.")?;
+            .context("Failed to parse response's body as text.")?;
 
         let device_description: DLNADescription = quick_xml::de::from_str(&body)
-            .map_err(|_| "Failed to parse device's XML description.")?;
+            .context("Failed to parse device's XML description.")?;
 
         Ok(EndpointInfo {
             device_type: device_description.device.device_type,

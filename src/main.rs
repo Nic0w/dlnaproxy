@@ -26,9 +26,9 @@ use reqwest::Url;
 
 use clap::{Parser, ArgAction};
 use log::{debug, trace};
+use anyhow::{anyhow, Context, Result};
 
 use crate::ssdp::SSDPManager;
-use crate::ssdp::utils::Result;
 use crate::tcp_proxy::TCPProxy;
 
 #[derive(Deserialize)]
@@ -111,7 +111,7 @@ fn main() -> Result<()> {
         config.period,
         Some(timeout),
         config.broadcast_iface,
-    );
+    )?;
     let (_timer, _guard) = ssdp.start_broadcast();
 
     ssdp.start_listener().join().expect("Panicked !");
@@ -124,7 +124,7 @@ fn get_config(args: CommandLineConf) -> Result<Config> {
     println!("{:?}", args);
 
     let config_as_file = args.config
-        .map(|file| fs::read_to_string(file).map_err(|_| "Could not open/read config file."))
+        .map(|file| fs::read_to_string(file).context("Could not open/read config file."))
         .transpose()?;
 
     let (
@@ -136,14 +136,11 @@ fn get_config(args: CommandLineConf) -> Result<Config> {
 
         ) = if let Some(config_file) = config_as_file {
 
-            let raw_config: RawConfig = toml::from_str(&config_file).map_err(|e| {
-                eprintln!("{}", e);
-                "failed to parse config file."
-            })?;
+            let raw_config: RawConfig = toml::from_str(&config_file).context("failed to parse config file.")?;
 
             let desc_url = raw_config.description_url
-                .ok_or("Missing description URL")
-                .and_then(|s| Url::parse(&s).map_err(|_| "Bad URL."))?;
+                .ok_or(anyhow!("Missing description URL"))
+                .and_then(|s| Url::parse(&s).context("Bad description URL."))?;
 
             let period = raw_config.period;
 
@@ -151,13 +148,13 @@ fn get_config(args: CommandLineConf) -> Result<Config> {
                 .as_deref()
                 .map(str::parse)
                 .transpose()
-                .map_err(|_| "Bad address")?;
+                .context("Bad proxy address")?;
 
             (desc_url, period, proxy, raw_config.iface, raw_config.verbose)
         }
         else {
             (
-                args.description_url.ok_or("Missing description URL")?,
+                args.description_url.ok_or(anyhow!("Missing description URL"))?,
                 args.interval,
                 args.proxy,
                 args.iface,

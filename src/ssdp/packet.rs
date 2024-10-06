@@ -4,7 +4,8 @@ use std::{
     net::{ToSocketAddrs, UdpSocket},
 };
 
-use crate::ssdp::utils::Result;
+use anyhow::{Context, Result};
+
 
 pub enum SSDPPacket {
     Alive {
@@ -31,7 +32,7 @@ impl SSDPPacket {
     pub fn send_to(&self, socket: &UdpSocket, dest: impl ToSocketAddrs) -> Result<()> {
         socket
             .send_to(self.to_string().as_bytes(), dest)
-            .map_err(|_| "Failed to send on UDP socket")?;
+            .context("Failed to send SSDP packet on UDP socket")?;
 
         Ok(())
     }
