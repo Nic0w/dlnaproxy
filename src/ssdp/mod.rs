@@ -1,4 +1,3 @@
-use reqwest::blocking;
 use std::{
     net::{Ipv4Addr, UdpSocket},
     os::fd::AsFd as _,
@@ -9,17 +8,16 @@ use std::{
 
 use anyhow::{Context, Result};
 
-use log::{debug, info, warn};
-
-use chrono::Utc;
+use listener::listen_task;
+use log::{debug, info, trace, warn};
 
 #[cfg(any(target_os = "android", target_os = "linux"))]
 use nix::sys::socket::sockopt::BindToDevice;
 
 use nix::sys::socket::{self, sockopt::ReuseAddr};
+use tokio::time;
 
 use crate::ssdp::broadcast::SSDPBroadcast;
-use crate::ssdp::listener::SSDPListener;
 use crate::ssdp::utils::InteractiveSSDP;
 
 pub mod broadcast;
@@ -34,7 +32,8 @@ pub static SSDP_ADDRESS: (Ipv4Addr, u16) = (Ipv4Addr::new(239, 255, 255, 250), 1
 
 pub struct SSDPManager {
     broadcast_period: Duration,
-    listener: Arc<SSDPListener>,
+    socket: UdpSocket,
+    interactive_ssdp: Arc<InteractiveSSDP>,
     broadcaster: Arc<SSDPBroadcast>,
 }
 
@@ -45,12 +44,15 @@ impl SSDPManager {
         connect_timeout: Option<Duration>,
         broadcast_iface: Option<String>,
     ) -> Result<Self> {
-        let http_client = blocking::Client::builder()
-            .connect_timeout(connect_timeout)
-            .build()
-            .context("Failed to build HTTP client")?;
+        let mut http_client = reqwest::Client::builder();
 
-        let (ssdp1, ssdp2) = ssdp_socket_pair(broadcast_iface)?;
+        if let Some(timeout) = connect_timeout {
+            http_client = http_client.connect_timeout(timeout);
+        }
+
+        let http_client = http_client.build().context("Failed to build HTTP client")?;
+
+        let (socket, ssdp2) = ssdp_socket_pair(broadcast_iface)?;
 
         let cache_max_age = match broadcast_period.as_secs() {
             n if n < 20 => 20,
@@ -63,54 +65,17 @@ impl SSDPManager {
             cache_max_age,
         ));
 
-        //We send an initial byebye before all else because... that's how MiniDLNA does it.
-        //Guessing that it's for clearing any cache that might exist on listening remote devices.
-        interactive_ssdp
-            .send_byebye(&ssdp1, SSDP_ADDRESS)
-            .context("Failed to send initial ssdp:byebye !")?;
-
-        let listener = Arc::new(SSDPListener::new(ssdp1, interactive_ssdp.clone()));
-
-        let broadcaster = Arc::new(SSDPBroadcast::new(ssdp2, interactive_ssdp));
+        let broadcaster = Arc::new(SSDPBroadcast::new(ssdp2, interactive_ssdp.clone()));
 
         Ok(SSDPManager {
             broadcast_period,
-            listener,
+            socket,
+            interactive_ssdp,
             broadcaster,
         })
     }
-
-    pub fn start_broadcast(&self) -> (timer::Timer, timer::Guard) {
-        let broadcast = self.broadcaster.clone();
-
-        let alive_timer = timer::Timer::new();
-
-        let now = Utc::now();
-        let period = chrono::Duration::from_std(self.broadcast_period).expect("Too large period.");
-
-        ctrlc::set_handler(broadcast.sigint_handler()).expect("Failed to set SIGING handler.");
-
-        debug!(target: "dlnaproxy", "About to schedule broadcast every {}s", period.num_seconds());
-
-        let guard = alive_timer.schedule(now, Some(period), move || {
-            if let Err(msg) = broadcast.do_ssdp_alive() {
-                warn!(target: "dlnaproxy", "Couldn't send ssdp:alive: {}", msg);
-            } else {
-                info!(target: "dlnaproxy", "Broadcasted on local SSDP channel!");
-            }
-        });
-
-        (alive_timer, guard)
-    }
-
-    pub fn start_listener(&self) -> JoinHandle<()> {
-        let listener = self.listener.clone();
-
-        thread::spawn(move || {
-            listener.do_listen();
-        })
-    }
 }
+
 fn ssdp_socket_pair(broadcast_iface: Option<String>) -> Result<(UdpSocket, UdpSocket)> {
     let ssdp1 = UdpSocket::bind(DUMMY_ADDRESS).context("Failed to bind SSDP socket")?;
 
@@ -136,4 +101,44 @@ fn ssdp_socket_pair(broadcast_iface: Option<String>) -> Result<(UdpSocket, UdpSo
     let ssdp2 = ssdp1.try_clone().context("Failed to clone SSDP socket.")?;
 
     Ok((ssdp1, ssdp2))
+}
+
+pub async fn main_task(ssdp: SSDPManager) -> Result<()> {
+    info!(target: "dlnaproxy", "Launched main task...");
+
+    //We send an initial byebye before all else because... that's how MiniDLNA does it.
+    //Guessing that it's for clearing any cache that might exist on listening remote devices.
+    ssdp.interactive_ssdp
+        .send_byebye(&ssdp.socket, SSDP_ADDRESS)
+        .await
+        .context("Failed to send initial ssdp:byebye !")?;
+
+    let _broadcast_handle =
+        tokio::task::spawn(broadcast_task(ssdp.broadcaster, ssdp.broadcast_period));
+
+    let _listener_handle =
+        tokio::task::spawn(listen_task(ssdp.socket, ssdp.interactive_ssdp.clone()));
+
+    let _ = _listener_handle.await;
+
+    Ok(())
+}
+
+pub async fn broadcast_task(broadcaster: Arc<SSDPBroadcast>, period: Duration) {
+    let _handle = tokio::spawn(broadcast::ctrlc_handler(broadcaster.clone()));
+
+    debug!(target: "dlnaproxy", "About to schedule broadcast every {}s", period.as_secs());
+
+    let mut interval = time::interval(period);
+
+    loop {
+        if let Err(msg) = broadcaster.do_ssdp_alive().await {
+            warn!(target: "dlnaproxy", "Couldn't send ssdp:alive: {}", msg);
+            break;
+        } else {
+            info!(target: "dlnaproxy", "Broadcasted on local SSDP channel!");
+        }
+
+        interval.tick().await;
+    }
 }

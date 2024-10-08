@@ -1,3 +1,4 @@
+use log::debug;
 use log::{info, trace, warn};
 
 use std::{collections::HashMap, net::UdpSocket, sync::Arc};
@@ -12,59 +13,6 @@ use crate::ssdp::utils::InteractiveSSDP;
 /*
     SSDP RFC for reference: https://tools.ietf.org/html/draft-cai-ssdp-v1-03
 */
-
-pub struct SSDPListener {
-    ssdp_socket: UdpSocket,
-    ssdp_helper: Arc<InteractiveSSDP>,
-}
-
-impl SSDPListener {
-    pub fn new(ssdp_socket: UdpSocket, ssdp_helper: Arc<InteractiveSSDP>) -> Self {
-        SSDPListener {
-            ssdp_socket,
-            ssdp_helper,
-        }
-    }
-
-    pub fn do_listen(&self) {
-        loop {
-            let mut buffer: [u8; 1024] = [0; 1024];
-
-            let (bytes_read, src_addr) = self
-                .ssdp_socket
-                .recv_from(&mut buffer)
-                .expect("failed to read!");
-
-            trace!(target: "dlnaproxy", "Read {amount} bytes sent by {sender}.", amount=bytes_read, sender=src_addr);
-
-            let (ssdp_method, ssdp_headers) = match parse_ssdp(&buffer) {
-                Ok(parsed_data) => parsed_data,
-                Err(e) => {
-                    warn!(target:"dlnaproxy", "{}", e);
-                    continue;
-                }
-            };
-
-            let st_header = ssdp_headers.get("ST");
-            let _man_header = ssdp_headers.get("MAN");
-
-            //We have a valid ssdp:discover request, although the rfc is soooooo vague it hurts.
-            if let Some(header) = st_header {
-                if ssdp_method == "M-SEARCH"
-                    && header == "urn:schemas-upnp-org:device:MediaServer:1"
-                {
-                    info!(target: "dlnaproxy", "Responding to a M-SEARCH request for a MediaServer from {sender}.", sender=src_addr);
-
-                    if let Err(msg) = self.ssdp_helper.send_ok(&self.ssdp_socket, src_addr) {
-                        warn!(target: "dlnaproxy", "Couldn't send ssdp:alive: {}", msg);
-                    } else {
-                        info!(target: "dlnaproxy", "Sent ssdp:ok on local SSDP channel!");
-                    }
-                }
-            }
-        }
-    }
-}
 
 fn parse_ssdp(buffer: &[u8]) -> Result<(String, HashMap<String, String>)> {
     let mut headers = [EMPTY_HEADER; 16];
@@ -89,4 +37,40 @@ fn parse_ssdp(buffer: &[u8]) -> Result<(String, HashMap<String, String>)> {
     }
 
     Ok((method, header_map))
+}
+
+pub async fn listen_task(ssdp_socket: UdpSocket, ssdp_helper: Arc<InteractiveSSDP>) {
+    debug!(target: "dlnaproxy", "Listen task up and running!");
+
+    loop {
+        let mut buffer: [u8; 1024] = [0; 1024];
+
+        let (bytes_read, src_addr) = ssdp_socket.recv_from(&mut buffer).expect("failed to read!");
+
+        trace!(target: "dlnaproxy", "Read {amount} bytes sent by {sender}.", amount=bytes_read, sender=src_addr);
+
+        let (ssdp_method, ssdp_headers) = match parse_ssdp(&buffer) {
+            Ok(parsed_data) => parsed_data,
+            Err(e) => {
+                warn!(target:"dlnaproxy", "{}", e);
+                continue;
+            }
+        };
+
+        let st_header = ssdp_headers.get("ST");
+        let _man_header = ssdp_headers.get("MAN");
+
+        //We have a valid ssdp:discover request, although the rfc is soooooo vague it hurts.
+        if let Some(header) = st_header {
+            if ssdp_method == "M-SEARCH" && header == "urn:schemas-upnp-org:device:MediaServer:1" {
+                info!(target: "dlnaproxy", "Responding to a M-SEARCH request for a MediaServer from {sender}.", sender=src_addr);
+
+                if let Err(msg) = ssdp_helper.send_ok(&ssdp_socket, src_addr).await {
+                    warn!(target: "dlnaproxy", "Couldn't send ssdp:alive: {}", msg);
+                } else {
+                    info!(target: "dlnaproxy", "Sent ssdp:ok on local SSDP channel!");
+                }
+            }
+        }
+    }
 }

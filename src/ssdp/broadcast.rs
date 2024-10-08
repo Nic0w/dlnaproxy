@@ -1,4 +1,5 @@
 use log::{debug, info, warn};
+use tokio::signal;
 
 use std::{net::UdpSocket, process, sync::Arc};
 
@@ -20,25 +21,29 @@ impl SSDPBroadcast {
         }
     }
 
-    pub fn sigint_handler(&self) -> impl FnMut() {
-        let socket = self.ssdp_socket.try_clone().unwrap();
+    pub async fn do_ssdp_alive(&self) -> Result<()> {
+        self.ssdp_helper
+            .send_alive(&self.ssdp_socket, SSDP_ADDRESS)
+            .await
+    }
+}
 
-        let helper = self.ssdp_helper.clone();
+pub async fn ctrlc_handler(broadcaster: Arc<SSDPBroadcast>) -> Result<()> {
+    debug!(target:"dlnaproxy", "SIGINT handler waiting...");
 
-        move || {
-            debug!(target:"dlnaproxy", "SIGINT handler triggered, sending ssdp:bybye !");
+    signal::ctrl_c().await?;
 
-            if let Err(msg) = helper.send_byebye(&socket, SSDP_ADDRESS) {
-                warn!(target: "dlnaproxy", "Failed to send ssdp:byebye: {}", msg);
-            }
+    let socket = broadcaster.ssdp_socket.try_clone()?;
 
-            info!(target: "dlnaproxy", "Exiting !");
+    let helper = broadcaster.ssdp_helper.clone();
 
-            process::exit(0);
-        }
+    debug!(target:"dlnaproxy", "SIGINT handler triggered, sending ssdp:bybye !");
+
+    if let Err(msg) = helper.send_byebye(&socket, SSDP_ADDRESS).await {
+        warn!(target: "dlnaproxy", "Failed to send ssdp:byebye: {}", msg);
     }
 
-    pub fn do_ssdp_alive(&self) -> Result<()> {
-        self.ssdp_helper.send_alive(&self.ssdp_socket, SSDP_ADDRESS)
-    }
+    info!(target: "dlnaproxy", "Exiting !");
+
+    process::exit(0);
 }

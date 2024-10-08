@@ -18,6 +18,7 @@ use std::{
     fs,
     net::{SocketAddr, ToSocketAddrs},
     path::PathBuf,
+    sync::Arc,
     time,
 };
 
@@ -28,6 +29,7 @@ use reqwest::Url;
 use anyhow::{anyhow, Context, Result};
 use clap::{ArgAction, Parser};
 use log::{debug, trace};
+use ssdp::main_task;
 
 use crate::ssdp::SSDPManager;
 use crate::tcp_proxy::TCPProxy;
@@ -37,7 +39,7 @@ struct RawConfig {
     description_url: Option<String>,
     period: Option<u64>,
     proxy: Option<String>,
-    verbose: Option<usize>,
+    verbose: Option<u8>,
     iface: Option<String>,
 }
 
@@ -54,7 +56,7 @@ struct Config {
 #[clap(author, version, about, long_about = None)]
 struct CommandLineConf {
     /// TOML config file.
-    #[clap(short, long, value_name = "/path/to/config.conf", conflicts_with_all(&["description-url", "interval", "proxy"]))]
+    #[clap(short, long, value_name = "/path/to/config.conf", conflicts_with_all(&["description_url", "interval", "proxy"]))]
     config: Option<PathBuf>,
 
     /// URL pointing to the remote DLNA server's root XML description.
@@ -75,10 +77,11 @@ struct CommandLineConf {
 
     /// Verbosity level. The more v, the more verbose.
     #[clap(short, long, action=ArgAction::Count)]
-    verbose: usize,
+    verbose: u8,
 }
 
-fn main() -> Result<()> {
+#[tokio::main]
+async fn main() -> Result<()> {
     let args = CommandLineConf::parse();
 
     let config = get_config(args)?;
@@ -111,9 +114,10 @@ fn main() -> Result<()> {
         Some(timeout),
         config.broadcast_iface,
     )?;
-    let (_timer, _guard) = ssdp.start_broadcast();
 
-    ssdp.start_listener().join().expect("Panicked !");
+    let handle = tokio::spawn(main_task(ssdp));
+
+    let _ = handle.await;
 
     Ok(())
 }
