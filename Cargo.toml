@@ -12,16 +12,15 @@ codegen-units = 1
 
 [dependencies]
 httparse = "1.9.5"
-timer = { git = "https://github.com/Yoric/timer.rs", branch = "master" }
 chrono = "0.4.38"
 clap = { version = "4.5.19", features = ["derive"] }
 nix = { version = "0.29.0", features = ["socket"] }
 fern = "0.6.2"
-ctrlc = "3.4.5"
 toml = "0.8.19"
 log = { version = "0.4.22", features = ["std"] }
-reqwest = { version = "0.12.8", default-features = false, features = ["blocking"] }
+reqwest = { version = "0.12.8", default-features = false}
 serde = { version = "1.0.210", features = ["derive"] }
 quick-xml = { version = "0.36.2", features = ["serialize"] }
 thiserror = "1.0.64"
 anyhow = "1.0.89"
+tokio = { version = "1.40.0", features = ["rt-multi-thread", "macros", "time", "net", "signal"] }
