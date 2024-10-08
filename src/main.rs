@@ -1,16 +1,3 @@
-extern crate chrono;
-extern crate clap;
-extern crate ctrlc;
-extern crate fern;
-extern crate httparse;
-extern crate log;
-extern crate nix;
-extern crate quick_xml;
-extern crate reqwest;
-extern crate serde;
-extern crate timer;
-extern crate toml;
-
 mod ssdp;
 mod tcp_proxy;
 
@@ -18,7 +5,6 @@ use std::{
     fs,
     net::{SocketAddr, ToSocketAddrs},
     path::PathBuf,
-    sync::Arc,
     time,
 };
 

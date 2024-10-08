@@ -2,14 +2,13 @@ use std::{
     net::{Ipv4Addr, UdpSocket},
     os::fd::AsFd as _,
     sync::Arc,
-    thread::{self, JoinHandle},
     time::Duration,
 };
 
 use anyhow::{Context, Result};
 
 use listener::listen_task;
-use log::{debug, info, trace, warn};
+use log::{debug, info, warn};
 
 #[cfg(any(target_os = "android", target_os = "linux"))]
 use nix::sys::socket::sockopt::BindToDevice;
