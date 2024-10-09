@@ -1,9 +1,4 @@
-use std::{
-    net::{Ipv4Addr},
-    os::fd::AsFd as _,
-    sync::Arc,
-    time::Duration,
-};
+use std::{net::Ipv4Addr, os::fd::AsFd as _, sync::Arc, time::Duration};
 use tokio::net::UdpSocket;
 
 use anyhow::{Context, Result};
@@ -52,7 +47,7 @@ impl SSDPManager {
 
         let http_client = http_client.build().context("Failed to build HTTP client")?;
 
-        let socket= ssdp_socket(broadcast_iface).await?;
+        let socket = ssdp_socket(broadcast_iface).await?;
 
         let cache_max_age = match broadcast_period.as_secs() {
             n if n < 20 => 20,
@@ -77,7 +72,9 @@ impl SSDPManager {
 }
 
 async fn ssdp_socket(broadcast_iface: Option<String>) -> Result<Arc<UdpSocket>> {
-    let ssdp1 = UdpSocket::bind(DUMMY_ADDRESS).await.context("Failed to bind SSDP socket")?;
+    let ssdp1 = UdpSocket::bind(DUMMY_ADDRESS)
+        .await
+        .context("Failed to bind SSDP socket")?;
 
     socket::setsockopt(&ssdp1.as_fd(), ReuseAddr, &true).context("Failed to set SO_REUSEADDR.")?;
 

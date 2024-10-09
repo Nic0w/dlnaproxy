@@ -99,7 +99,8 @@ async fn main() -> Result<()> {
         config.period,
         Some(timeout),
         config.broadcast_iface,
-    ).await?;
+    )
+    .await?;
 
     let handle = tokio::spawn(main_task(ssdp));
 
