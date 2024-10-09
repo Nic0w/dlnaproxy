@@ -1,8 +1,6 @@
 use chrono::Utc;
-use std::{
-    fmt,
-    net::{ToSocketAddrs, UdpSocket},
-};
+use std::fmt;
+use tokio::net::{ToSocketAddrs, UdpSocket};
 
 use anyhow::{Context, Result};
 
@@ -28,9 +26,10 @@ pub enum SSDPPacket {
 }
 
 impl SSDPPacket {
-    pub fn send_to(&self, socket: &UdpSocket, dest: impl ToSocketAddrs) -> Result<()> {
+    pub async fn send_to(&self, socket: &UdpSocket, dest: impl ToSocketAddrs) -> Result<()> {
         socket
             .send_to(self.to_string().as_bytes(), dest)
+            .await
             .context("Failed to send SSDP packet on UDP socket")?;
 
         Ok(())

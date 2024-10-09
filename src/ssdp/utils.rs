@@ -1,10 +1,10 @@
 use log::{debug, trace};
-
-use std::net::{ToSocketAddrs, UdpSocket};
+use tokio::net::ToSocketAddrs;
+use tokio::net::UdpSocket;
 
 use anyhow::Context;
 use anyhow::Result;
-use reqwest::{blocking, header::SERVER};
+use reqwest::header::SERVER;
 use serde::Deserialize;
 
 use crate::ssdp::packet::SSDPPacket;
@@ -30,13 +30,13 @@ pub struct EndpointInfo {
 }
 
 pub struct InteractiveSSDP {
-    http_client: blocking::Client,
+    http_client: reqwest::Client,
     remote_desc_url: String,
     cache_max_age: usize,
 }
 
 impl InteractiveSSDP {
-    pub fn new(client: blocking::Client, url: &str, cache_max_age: usize) -> Self {
+    pub fn new(client: reqwest::Client, url: &str, cache_max_age: usize) -> Self {
         InteractiveSSDP {
             http_client: client,
             remote_desc_url: url.into(),
@@ -44,13 +44,14 @@ impl InteractiveSSDP {
         }
     }
 
-    fn fetch_endpoint_info(&self) -> Result<EndpointInfo> {
+    async fn fetch_endpoint_info(&self) -> Result<EndpointInfo> {
         trace!(target: "dlnaproxy", "Fetching remote server's info.");
 
         let endpoint_response = self
             .http_client
             .get(&self.remote_desc_url)
             .send()
+            .await
             .context("Failed to get description of remote endpoint.")?;
 
         let server_ua = endpoint_response
@@ -61,6 +62,7 @@ impl InteractiveSSDP {
 
         let body = endpoint_response
             .text()
+            .await
             .context("Failed to parse response's body as text.")?;
 
         let device_description: DLNADescription =
@@ -73,7 +75,7 @@ impl InteractiveSSDP {
         })
     }
 
-    fn send_to(
+    async fn send_to(
         &self,
         socket: &UdpSocket,
         dest: impl ToSocketAddrs,
@@ -82,14 +84,14 @@ impl InteractiveSSDP {
     ) -> Result<()> {
         trace!(target: "dlnaproxy", "{}", ssdp_packet.to_string());
 
-        ssdp_packet.send_to(socket, dest)?;
+        ssdp_packet.send_to(socket, dest).await?;
 
         debug!(target: "dlnaproxy", "Sent ssdp:{} packet !", p_type);
         Ok(())
     }
 
-    pub fn send_alive(&self, socket: &UdpSocket, dest: impl ToSocketAddrs) -> Result<()> {
-        let info = self.fetch_endpoint_info()?;
+    pub async fn send_alive(&self, socket: &UdpSocket, dest: impl ToSocketAddrs) -> Result<()> {
+        let info = self.fetch_endpoint_info().await?;
 
         let ssdp_alive = SSDPPacket::Alive {
             desc_url: self.remote_desc_url.clone(),
@@ -99,11 +101,11 @@ impl InteractiveSSDP {
             cache_max_age: self.cache_max_age,
         };
 
-        self.send_to(socket, dest, ssdp_alive, "alive")
+        self.send_to(socket, dest, ssdp_alive, "alive").await
     }
 
-    pub fn send_ok(&self, socket: &UdpSocket, dest: impl ToSocketAddrs) -> Result<()> {
-        let info = self.fetch_endpoint_info()?;
+    pub async fn send_ok(&self, socket: &UdpSocket, dest: impl ToSocketAddrs) -> Result<()> {
+        let info = self.fetch_endpoint_info().await?;
 
         let ssdp_ok = SSDPPacket::Ok {
             desc_url: self.remote_desc_url.clone(),
@@ -113,17 +115,17 @@ impl InteractiveSSDP {
             cache_max_age: self.cache_max_age,
         };
 
-        self.send_to(socket, dest, ssdp_ok, "ok")
+        self.send_to(socket, dest, ssdp_ok, "ok").await
     }
 
-    pub fn send_byebye(&self, socket: &UdpSocket, dest: impl ToSocketAddrs) -> Result<()> {
-        let info = self.fetch_endpoint_info()?;
+    pub async fn send_byebye(&self, socket: &UdpSocket, dest: impl ToSocketAddrs) -> Result<()> {
+        let info = self.fetch_endpoint_info().await?;
 
         let ssdp_byebye = SSDPPacket::ByeBye {
             unique_device_name: info.unique_device_name,
             device_type: info.device_type,
         };
 
-        self.send_to(socket, dest, ssdp_byebye, "byebye")
+        self.send_to(socket, dest, ssdp_byebye, "byebye").await
     }
 }
