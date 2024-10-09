@@ -1,8 +1,9 @@
 use log::{debug, info, warn};
 use tokio::net::UdpSocket;
-use tokio::signal;
+use tokio::{signal, time};
 
 use std::borrow::Borrow as _;
+use std::time::Duration;
 use std::{process, sync::Arc};
 
 use anyhow::Result;
@@ -27,6 +28,25 @@ impl SSDPBroadcast {
         self.ssdp_helper
             .send_alive(self.ssdp_socket.borrow(), SSDP_ADDRESS)
             .await
+    }
+}
+
+pub async fn broadcast_task(broadcaster: Arc<SSDPBroadcast>, period: Duration) {
+    let _handle = tokio::spawn(ctrlc_handler(broadcaster.clone()));
+
+    debug!(target: "dlnaproxy", "About to schedule broadcast every {}s", period.as_secs());
+
+    let mut interval = time::interval(period);
+
+    loop {
+        if let Err(msg) = broadcaster.do_ssdp_alive().await {
+            warn!(target: "dlnaproxy", "Couldn't send ssdp:alive: {}", msg);
+            break;
+        } else {
+            info!(target: "dlnaproxy", "Broadcasted on local SSDP channel!");
+        }
+
+        interval.tick().await;
     }
 }
 

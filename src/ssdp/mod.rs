@@ -3,14 +3,15 @@ use tokio::net::UdpSocket;
 
 use anyhow::{Context, Result};
 
-use listener::listen_task;
-use log::{debug, info, warn};
+use log::info;
 
 #[cfg(any(target_os = "android", target_os = "linux"))]
 use nix::sys::socket::sockopt::BindToDevice;
 
 use nix::sys::socket::{self, sockopt::ReuseAddr};
-use tokio::time;
+
+use broadcast::broadcast_task;
+use listener::listen_task;
 
 use crate::ssdp::broadcast::SSDPBroadcast;
 use crate::ssdp::utils::InteractiveSSDP;
@@ -117,23 +118,4 @@ pub async fn main_task(ssdp: SSDPManager) -> Result<()> {
     let _ = _listener_handle.await;
 
     Ok(())
-}
-
-pub async fn broadcast_task(broadcaster: Arc<SSDPBroadcast>, period: Duration) {
-    let _handle = tokio::spawn(broadcast::ctrlc_handler(broadcaster.clone()));
-
-    debug!(target: "dlnaproxy", "About to schedule broadcast every {}s", period.as_secs());
-
-    let mut interval = time::interval(period);
-
-    loop {
-        if let Err(msg) = broadcaster.do_ssdp_alive().await {
-            warn!(target: "dlnaproxy", "Couldn't send ssdp:alive: {}", msg);
-            break;
-        } else {
-            info!(target: "dlnaproxy", "Broadcasted on local SSDP channel!");
-        }
-
-        interval.tick().await;
-    }
 }
