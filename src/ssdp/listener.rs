@@ -1,6 +1,7 @@
 use log::debug;
 use log::{info, trace, warn};
 
+use std::borrow::Cow;
 use std::{collections::HashMap, sync::Arc};
 use tokio::net::UdpSocket;
 
@@ -15,7 +16,7 @@ use crate::ssdp::utils::InteractiveSSDP;
     SSDP RFC for reference: https://tools.ietf.org/html/draft-cai-ssdp-v1-03
 */
 
-fn parse_ssdp(buffer: &[u8]) -> Result<(String, HashMap<String, String>)> {
+fn parse_ssdp(buffer: &[u8]) -> Result<(String, HashMap<String, Cow<'_, str>>)> {
     let mut headers = [EMPTY_HEADER; 16];
     let mut req = Request::new(&mut headers);
 
@@ -27,13 +28,13 @@ fn parse_ssdp(buffer: &[u8]) -> Result<(String, HashMap<String, String>)> {
         .map(String::from)
         .ok_or(super::error::Error::NoSSDPMethod)?;
 
-    let mut header_map: HashMap<String, String> = HashMap::with_capacity(headers.len());
+    let mut header_map: HashMap<String, Cow<'_, str>> = HashMap::with_capacity(headers.len());
     let mut i = 0;
     while !headers[i].name.is_empty() {
         let name = String::from(headers[i].name).to_uppercase();
         let value = String::from_utf8_lossy(headers[i].value);
 
-        header_map.insert(name, value.to_string());
+        header_map.insert(name, value);
         i += 1;
     }
 
