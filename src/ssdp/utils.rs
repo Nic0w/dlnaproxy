@@ -1,6 +1,6 @@
 use log::{debug, trace};
-
-use std::net::{ToSocketAddrs, UdpSocket};
+use tokio::net::ToSocketAddrs;
+use tokio::net::UdpSocket;
 
 use anyhow::Context;
 use anyhow::Result;
@@ -75,7 +75,7 @@ impl InteractiveSSDP {
         })
     }
 
-    fn send_to(
+    async fn send_to(
         &self,
         socket: &UdpSocket,
         dest: impl ToSocketAddrs,
@@ -84,7 +84,7 @@ impl InteractiveSSDP {
     ) -> Result<()> {
         trace!(target: "dlnaproxy", "{}", ssdp_packet.to_string());
 
-        ssdp_packet.send_to(socket, dest)?;
+        ssdp_packet.send_to(socket, dest).await?;
 
         debug!(target: "dlnaproxy", "Sent ssdp:{} packet !", p_type);
         Ok(())
@@ -101,7 +101,7 @@ impl InteractiveSSDP {
             cache_max_age: self.cache_max_age,
         };
 
-        self.send_to(socket, dest, ssdp_alive, "alive")
+        self.send_to(socket, dest, ssdp_alive, "alive").await
     }
 
     pub async fn send_ok(&self, socket: &UdpSocket, dest: impl ToSocketAddrs) -> Result<()> {
@@ -115,7 +115,7 @@ impl InteractiveSSDP {
             cache_max_age: self.cache_max_age,
         };
 
-        self.send_to(socket, dest, ssdp_ok, "ok")
+        self.send_to(socket, dest, ssdp_ok, "ok").await
     }
 
     pub async fn send_byebye(&self, socket: &UdpSocket, dest: impl ToSocketAddrs) -> Result<()> {
@@ -126,6 +126,6 @@ impl InteractiveSSDP {
             device_type: info.device_type,
         };
 
-        self.send_to(socket, dest, ssdp_byebye, "byebye")
+        self.send_to(socket, dest, ssdp_byebye, "byebye").await
     }
 }

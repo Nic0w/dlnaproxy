@@ -1,9 +1,10 @@
 use std::{
-    net::{Ipv4Addr, UdpSocket},
+    net::{Ipv4Addr},
     os::fd::AsFd as _,
     sync::Arc,
     time::Duration,
 };
+use tokio::net::UdpSocket;
 
 use anyhow::{Context, Result};
 
@@ -31,13 +32,13 @@ pub static SSDP_ADDRESS: (Ipv4Addr, u16) = (Ipv4Addr::new(239, 255, 255, 250), 1
 
 pub struct SSDPManager {
     broadcast_period: Duration,
-    socket: UdpSocket,
+    socket: Arc<UdpSocket>,
     interactive_ssdp: Arc<InteractiveSSDP>,
     broadcaster: Arc<SSDPBroadcast>,
 }
 
 impl SSDPManager {
-    pub fn new(
+    pub async fn new(
         endpoint_desc_url: &str,
         broadcast_period: Duration,
         connect_timeout: Option<Duration>,
@@ -51,7 +52,7 @@ impl SSDPManager {
 
         let http_client = http_client.build().context("Failed to build HTTP client")?;
 
-        let (socket, ssdp2) = ssdp_socket_pair(broadcast_iface)?;
+        let socket= ssdp_socket(broadcast_iface).await?;
 
         let cache_max_age = match broadcast_period.as_secs() {
             n if n < 20 => 20,
@@ -64,7 +65,7 @@ impl SSDPManager {
             cache_max_age,
         ));
 
-        let broadcaster = Arc::new(SSDPBroadcast::new(ssdp2, interactive_ssdp.clone()));
+        let broadcaster = Arc::new(SSDPBroadcast::new(socket.clone(), interactive_ssdp.clone()));
 
         Ok(SSDPManager {
             broadcast_period,
@@ -75,8 +76,8 @@ impl SSDPManager {
     }
 }
 
-fn ssdp_socket_pair(broadcast_iface: Option<String>) -> Result<(UdpSocket, UdpSocket)> {
-    let ssdp1 = UdpSocket::bind(DUMMY_ADDRESS).context("Failed to bind SSDP socket")?;
+async fn ssdp_socket(broadcast_iface: Option<String>) -> Result<Arc<UdpSocket>> {
+    let ssdp1 = UdpSocket::bind(DUMMY_ADDRESS).await.context("Failed to bind SSDP socket")?;
 
     socket::setsockopt(&ssdp1.as_fd(), ReuseAddr, &true).context("Failed to set SO_REUSEADDR.")?;
 
@@ -94,12 +95,10 @@ fn ssdp_socket_pair(broadcast_iface: Option<String>) -> Result<(UdpSocket, UdpSo
     }
 
     ssdp1
-        .join_multicast_v4(&SSDP_ADDRESS.0, &Ipv4Addr::UNSPECIFIED)
+        .join_multicast_v4(SSDP_ADDRESS.0, Ipv4Addr::UNSPECIFIED)
         .context("Failed to join SSDP multicast group.")?;
 
-    let ssdp2 = ssdp1.try_clone().context("Failed to clone SSDP socket.")?;
-
-    Ok((ssdp1, ssdp2))
+    Ok(Arc::new(ssdp1))
 }
 
 pub async fn main_task(ssdp: SSDPManager) -> Result<()> {

@@ -1,7 +1,9 @@
 use log::{debug, info, warn};
+use tokio::net::UdpSocket;
 use tokio::signal;
 
-use std::{net::UdpSocket, process, sync::Arc};
+use std::borrow::Borrow as _;
+use std::{process, sync::Arc};
 
 use anyhow::Result;
 
@@ -9,12 +11,12 @@ use crate::ssdp::utils::InteractiveSSDP;
 use crate::ssdp::SSDP_ADDRESS;
 
 pub struct SSDPBroadcast {
-    ssdp_socket: UdpSocket,
+    ssdp_socket: Arc<UdpSocket>,
     ssdp_helper: Arc<InteractiveSSDP>,
 }
 
 impl SSDPBroadcast {
-    pub fn new(ssdp_socket: UdpSocket, ssdp_helper: Arc<InteractiveSSDP>) -> Self {
+    pub fn new(ssdp_socket: Arc<UdpSocket>, ssdp_helper: Arc<InteractiveSSDP>) -> Self {
         SSDPBroadcast {
             ssdp_socket,
             ssdp_helper,
@@ -23,7 +25,7 @@ impl SSDPBroadcast {
 
     pub async fn do_ssdp_alive(&self) -> Result<()> {
         self.ssdp_helper
-            .send_alive(&self.ssdp_socket, SSDP_ADDRESS)
+            .send_alive(self.ssdp_socket.borrow(), SSDP_ADDRESS)
             .await
     }
 }
@@ -33,7 +35,7 @@ pub async fn ctrlc_handler(broadcaster: Arc<SSDPBroadcast>) -> Result<()> {
 
     signal::ctrl_c().await?;
 
-    let socket = broadcaster.ssdp_socket.try_clone()?;
+    let socket = broadcaster.ssdp_socket.clone();
 
     let helper = broadcaster.ssdp_helper.clone();
 

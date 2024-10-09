@@ -1,7 +1,8 @@
 use log::debug;
 use log::{info, trace, warn};
 
-use std::{collections::HashMap, net::UdpSocket, sync::Arc};
+use std::{collections::HashMap, sync::Arc};
+use tokio::net::UdpSocket;
 
 use httparse::{Request, EMPTY_HEADER};
 
@@ -39,13 +40,13 @@ fn parse_ssdp(buffer: &[u8]) -> Result<(String, HashMap<String, String>)> {
     Ok((method, header_map))
 }
 
-pub async fn listen_task(ssdp_socket: UdpSocket, ssdp_helper: Arc<InteractiveSSDP>) {
+pub async fn listen_task(ssdp_socket: Arc<UdpSocket>, ssdp_helper: Arc<InteractiveSSDP>) {
     debug!(target: "dlnaproxy", "Listen task up and running!");
 
     loop {
         let mut buffer: [u8; 1024] = [0; 1024];
 
-        let (bytes_read, src_addr) = ssdp_socket.recv_from(&mut buffer).expect("failed to read!");
+        let (bytes_read, src_addr) = ssdp_socket.recv_from(&mut buffer).await.expect("failed to read!");
 
         trace!(target: "dlnaproxy", "Read {amount} bytes sent by {sender}.", amount=bytes_read, sender=src_addr);
 
