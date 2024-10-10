@@ -1,41 +1,20 @@
+mod config;
 mod ssdp;
 mod tcp_proxy;
 
-use std::{
-    fs,
-    net::{SocketAddr, ToSocketAddrs},
-    path::PathBuf,
-    time,
-};
+use std::{net::SocketAddr, path::PathBuf, time};
 
-use serde::Deserialize;
+use config::Config;
 
 use reqwest::Url;
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::Result;
 use clap::{ArgAction, Parser};
 use log::{debug, trace};
 use ssdp::main_task;
 
 use crate::ssdp::SSDPManager;
 use crate::tcp_proxy::TCPProxy;
-
-#[derive(Deserialize)]
-struct RawConfig {
-    description_url: Option<String>,
-    period: Option<u64>,
-    proxy: Option<String>,
-    verbose: Option<u8>,
-    iface: Option<String>,
-}
-
-struct Config {
-    description_url: Url,
-    period: time::Duration,
-    proxy: Option<SocketAddr>,
-    broadcast_iface: Option<String>,
-    verbose: log::LevelFilter,
-}
 
 /// Broadcast ssdp:alive messages on the local network's multicast SSDP channel on behalf of a remote DLNA server.
 #[derive(Parser, Debug)]
@@ -70,14 +49,14 @@ struct CommandLineConf {
 async fn main() -> Result<()> {
     let args = CommandLineConf::parse();
 
-    let config = get_config(args)?;
+    let config = Config::try_from(args)?;
 
     init_logging(config.verbose);
 
     let mut url = config.description_url;
 
     let _tcp_proxy_thread = if let Some(proxy_addr) = config.proxy {
-        let server_addr = sockaddr_from_url(&url);
+        let server_addr = config::sockaddr_from_url(&url);
 
         url.set_ip_host(proxy_addr.ip()).unwrap();
         url.set_port(Some(proxy_addr.port())).unwrap();
@@ -107,89 +86,6 @@ async fn main() -> Result<()> {
     let _ = handle.await;
 
     Ok(())
-}
-
-fn get_config(args: CommandLineConf) -> Result<Config> {
-    println!("{:?}", args);
-
-    let config_as_file = args
-        .config
-        .map(|file| fs::read_to_string(file).context("Could not open/read config file."))
-        .transpose()?;
-
-    let (description_url, period, proxy, broadcast_iface, verbose) =
-        if let Some(config_file) = config_as_file {
-            let raw_config: RawConfig =
-                toml::from_str(&config_file).context("failed to parse config file.")?;
-
-            let desc_url = raw_config
-                .description_url
-                .ok_or(anyhow!("Missing description URL"))
-                .and_then(|s| Url::parse(&s).context("Bad description URL."))?;
-
-            let period = raw_config.period;
-
-            let proxy: Option<SocketAddr> = raw_config
-                .proxy
-                .as_deref()
-                .map(str::parse)
-                .transpose()
-                .context("Bad proxy address")?;
-
-            (
-                desc_url,
-                period,
-                proxy,
-                raw_config.iface,
-                raw_config.verbose,
-            )
-        } else {
-            (
-                args.description_url
-                    .ok_or(anyhow!("Missing description URL"))?,
-                args.interval,
-                args.proxy,
-                args.iface,
-                Some(args.verbose),
-            )
-        };
-
-    let period = period.or(Some(895)).map(time::Duration::from_secs).unwrap();
-
-    let verbose = verbose.map_or(log::LevelFilter::Warn, |v| match v {
-        0 => log::LevelFilter::Warn,
-        1 => log::LevelFilter::Info,
-        2 => log::LevelFilter::Debug,
-        _ => log::LevelFilter::Trace,
-    });
-
-    Ok(Config {
-        description_url,
-        proxy,
-        period,
-        broadcast_iface,
-        verbose,
-    })
-}
-
-fn sockaddr_from_url(url: &Url) -> SocketAddr {
-    let host = url.host().expect("Unsupported URL.");
-
-    let port: u16 = url
-        .port_or_known_default()
-        .expect("Unknown port or scheme.");
-
-    let address = format!("{}:{}", host, port);
-
-    let addresses: Vec<SocketAddr> = address
-        .to_socket_addrs()
-        .expect("Couldn't resolve or build socket address from submitted URL.")
-        .collect();
-
-    addresses
-        .first()
-        .expect("No valid socket address.")
-        .to_owned()
 }
 
 fn init_logging(verbosity: log::LevelFilter) -> log::LevelFilter {
